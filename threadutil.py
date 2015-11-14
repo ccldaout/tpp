@@ -4,22 +4,10 @@ import threading
 import time
 import traceback
 from threading import *
-
-class _Printer(object):
-    __slots__ = ('_lock', 'print_name')
-    def __init__(self):
-        self._lock = threading.Lock()
-        self.print_name = False
-    def __call__(self, fmt, *args):
-        with self._lock:
-            if self.print_name:
-                fmt = threading.current_thread().name + ': ' +fmt
-            print fmt % args
-
-pr = _Printer()
+from tpp.toolbox import pr	# for compatibility
 
 #-----------------------------------------------------------------------------
-#              extend class to avoid main thread to be blocked
+#                 Extend class to avoid blocking main thread
 #-----------------------------------------------------------------------------
 
 _tmo_s = 3600*24*365*100
@@ -70,51 +58,6 @@ class Event(type(threading.Event())):
                 return True
             if timeout:
                 return False
-
-#-----------------------------------------------------------------------------
-#                             Asynchronous tool
-#-----------------------------------------------------------------------------
-
-class _AsyncCalling(object):
-    def __new__(cls, func, *args, **kwargs):
-        self = super(_AsyncCalling, cls).__new__(cls)
-        self._target = func
-        self._finished = Event()
-        self._result = None
-        self._thr = Thread(target=self._thread, args=args, kwargs=kwargs)
-        self._thr.daemon = True
-        return self
-
-    def _thread(self, *args, **kwargs):
-        try:
-            self._result = self._target(*args, **kwargs)
-        except Exception as e:
-            self._result = e
-        self._finished.set()
-
-    def start(self):
-        self._thr.start()
-        return self
-
-    @property
-    def is_finished(self):
-        return self._finished.is_set()
-
-    def cancel(self):
-        self._thr.cancel()
-
-    def wait(self, tmo_s=None):
-        return self._finished.wait(tmo_s)
-
-    @property
-    def result(self):
-        self.wait()
-        if isinstance(self._result, Exception):
-            raise self._result
-        return self._result
-
-def async(func, *args, **kwargs):
-    return _AsyncCalling(func, *args, **kwargs).start()
 
 #-----------------------------------------------------------------------------
 #                              Cancelable queue
@@ -168,7 +111,7 @@ class ThreadPool(object):
     _g_lock = threading.Lock()
     _g_count = 0
 
-    def __new__(cls, thread_max=16, thread_tmo_s=120, thread_tmo_lwm=1):
+    def __new__(cls, thread_max=256, thread_tmo_s=120, thread_tmo_lwm=1):
         self = super(ThreadPool, cls).__new__(cls)
         with cls._g_lock:
             self._name = 'POOL#%d' % cls._g_count

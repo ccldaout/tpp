@@ -154,13 +154,13 @@ class PackerMeta(type):
         if os.getenv('TPP_IPC_DEBUG'):
             def wrapper_pack(f):
                 def pack(self, msg):
-                    tu.pr('  PACK: %s', msg)
+                    tb.pr('  PACK: %.2048s', msg)
                     return f(self, msg)
                 return pack
             def wrapper_unpack(f):
                 def unpack(self, csock):
                     msg = f(self, csock)
-                    tu.pr('UNPACK: %s', msg)
+                    tb.pr('UNPACK: %.2048s', msg)
                     return msg
                 return unpack
             dic['pack'] = wrapper_pack(dic['pack'])
@@ -170,6 +170,9 @@ class PackerMeta(type):
 
 class PackerBase(object):
     __metaclass__ = PackerMeta
+
+    def __call__(self):
+        return self
 
     def pack(self, msg):
         raise NotImplementedError('pack')
@@ -252,7 +255,6 @@ class IPCPort(object):
         self._csock = csock
         self._send_queue = tu.Queue()
         self._send_error = None
-        self.mainthread = None
         self.order = self._counter()
         return self
 
@@ -270,7 +272,7 @@ class IPCPort(object):
             except Exception as e:
                 traceback.print_exc()
                 self._send_error = (e, msg)
-                self._csock.shutdown(read=True)
+                ___(self._csock.shutdown)(read=True)
                 return
 
     def _send_thread(self):
@@ -279,16 +281,18 @@ class IPCPort(object):
         except:
             pass
         self._service.unlink(self)
-        self._csock.shutdown(write=True)
-        ___(self._send_queue.stop)(soon=True)
+        # [AD-HOC] try..except is to suppress error whene interpeter shutdown
+        try:
+            self._csock.shutdown(write=True)
+            self._send_queue.stop(soon=True)
+        except:
+            pass
 
-    def main_loop(self, return_condition):
+    def _main_loop(self):
         while True:
             try:
                 msg = self._packer.unpack(self._csock)
                 self._service.handle(self, msg)
-                if return_condition(msg):
-                    return msg
             except Exception as e:
                 if self._send_error:
                     e, msg = self._send_error
@@ -307,27 +311,27 @@ class IPCPort(object):
                 self._service.handle_ACCEPTED(self)
             else:
                 self._service.handle_CONNECTED(self)
-            self.main_loop(lambda m:False)
+            self._main_loop()
         except:
             traceback.print_exc()
         ___(self._send_queue.stop)(soon=False)
         send_thread.join()
         self._service = None
-        self.mainthread = None
         self._csock.close()
         if fin_func:
             fin_func()
 
     def start(self, fin_func=None):
+        name = '%s#%d' % (type(self._service).__name__, self.order)
+
         t = tu.Thread(target=self._send_thread)
         t.daemon = True
-        t.name = 'port.sender'
+        t.name = name + '(S)'
         t.start()
 
         t = tu.Thread(target=self._main_thread, args=(t, fin_func))
         t.daemon = True
-        t.name = 'port.main'
-        self.mainthread = t
+        t.name = name + '(M)'
         t.start()
 
     def send(self, msg):
@@ -337,18 +341,19 @@ class IPCPort(object):
         ___(self._send_queue.stop)(soon)
 
 class Connector(object):
-    def __new__(cls, service_object, addr, recover=False, packer=None):
+    def __new__(cls, service_object, addr, retry=True, recover=False, packer=None):
         self = super(Connector, cls).__new__(cls)
         self._service = service_object
         self._packer = packer
         self._addr = addr
         self._recover = recover
+        self._retry = retry
         self._retry_itv_s = 5
         self._retry_exc_n = 60 / self._retry_itv_s
         return self
 
     def _main_thread(self):
-        retry = 0
+        retry_n = 0
         fin_func = self.start if self._recover else None
         while True:
             csock = None
@@ -358,18 +363,23 @@ class Connector(object):
                 self._port.start(fin_func)
                 return
             except:
-                if retry % self._retry_exc_n == 0:
-                    traceback.print_exc()
                 if csock:
                     csock.close()
+                if not self._retry:
+                    raise
+                if retry_n % self._retry_exc_n == 0:
+                    traceback.print_exc()
                 time.sleep(self._retry_itv_s)
-                retry += 1
+                retry_n += 1
 
-    def start(self):
-        self._thread = tu.Thread(target=self._main_thread)
-        self._thread.daemon = True
-        self._thread.name = 'connector'
-        self._thread.start()
+    def start(self, background=True):
+        if background:
+            self._thread = tu.Thread(target=self._main_thread)
+            self._thread.daemon = True
+            self._thread.name = str(self._addr) + '(C)'
+            self._thread.start()
+        else:
+            self._main_thread()
         return self
     
     @property
@@ -378,10 +388,12 @@ class Connector(object):
         return self._port
 
 class Acceptor(object):
-    def __new__(cls, service_factory, addr, packer=None):
+    def __new__(cls, service_factory, addr, packer_factory=None):
         self = super(Acceptor, cls).__new__(cls)
         self._service_factory = service_factory
-        self._packer = packer
+        if packer_factory is None:
+            packer_factory = PyPacker()
+        self._packer_factory = packer_factory
         self._addr = addr
         return self
 
@@ -389,7 +401,8 @@ class Acceptor(object):
         while True:
             csock, _ = svr_csock.accept()
             try:
-                IPCPort(self._service_factory(), self._packer, csock).start()
+                IPCPort(self._service_factory(),
+                        self._packer_factory(), csock).start()
             except:
                 traceback.print_exc()
                 csock.close()
@@ -399,7 +412,7 @@ class Acceptor(object):
         if background:
             t = tu.Thread(target=self._main_thread, args=(svr_csock,))
             t.daemon = True
-            t.name = 'acceptor'
+            t.name = str(self._addr) + '(A)'
             t.start()
         else:
             self._main_thread(svr_csock)

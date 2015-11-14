@@ -33,6 +33,24 @@ class _TaskBase(object):
 
     # DON'T override
 
+    def __or__(self, other):
+        if isinstance(self, _TaskAny):
+            self.add(other)
+            return self
+        return _TaskAny(self, other)
+
+    def __and__(self, other):
+        if isinstance(self, _TaskAll):
+            self.add(other)
+            return self
+        return _TaskAll(self, other)
+
+    def __add__(self, other):
+        if isinstance(self, _TaskSequence):
+            self.add(other)
+            return self
+        return _TaskSequence(self, other)
+
     def __prologue(self, boss):
         if self.__is_started.is_set():
             raise RuntimeError('Task is already started.')
@@ -117,6 +135,10 @@ class _TaskSequence(_TaskBase):
         self._running_task = None
         return self
 
+    def add(self, task):
+        self._tasks.append(task)
+        self._last_task = task
+
     def _start(self):
         if self._tasks:
             t = self._tasks.pop(0)
@@ -151,9 +173,14 @@ class _TaskAll(_TaskBase):
     def __new__(cls, *tasks):
         ini_result = [None] * len(tasks)
         self = super(_TaskAll, cls).__new__(cls, ini_result)
-        self._tasks_ordered = tasks
+        self._tasks_ordered = list(tasks)
         self._tasks = set(tasks)
         return self
+
+    def add(self, task):
+        self._tasks_ordered.append(task)
+        self._tasks.add(task)
+        self._result.result.append(None)
 
     def _start(self):
         self._result.success = True
@@ -184,6 +211,9 @@ class _TaskAny(_TaskBase):
         self = super(_TaskAny, cls).__new__(cls)
         self._tasks = set(tasks)
         return self
+
+    def add(self, task):
+        self._tasks.add(task)
 
     def _start(self):
         for t in self._tasks:

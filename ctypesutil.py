@@ -59,6 +59,12 @@ def clear(self):
 
 def _wrap_setattr(setattr_):
     def _setattr(self, mbr, val):
+        for f in self._fields_:
+            if f[0] == mbr:
+                break
+        else:
+            if not self._permit_new_attr_:
+                raise AttributeError('%s has no member %s.' % (type(self).__name__, mbr))
         if isinstance(val, float):
             try:
                 setattr_(self, mbr, val)
@@ -101,11 +107,14 @@ def _array_reduce(self):
              bytearray(c_string_at(c_addressof(self), c_sizeof(self)))),
             )
 
+# Extender for ctypes array.
+
 def array(ctype):
     orgctype = ctype
     while hasattr(ctype, '_length_'):
         ctype.__reduce__ = _array_reduce
         ctype.copy = copy
+        ctype.dup = copy
         ctype.clear = clear
         ctype.dump = dump
         ctype2 = ctype
@@ -114,13 +123,43 @@ def array(ctype):
         ctype2.__setitem__ = _wrap_setitem(ctype2.__setitem__)
     return orgctype
 
-# Custom Structure and Union classes.
-
 def _setup_array(dic):
     if '_fields_' in dic:
         for fld in dic['_fields_']:
             if is_array(fld[1]):
                 array(fld[1])
+
+# Additional properties for ctypes structure object.
+
+def _top_base(self):
+    o = self
+    while o._b_base_:
+        o = o._b_base_
+    return o
+
+class _PropertyCacheDesc(object):
+    __slots__ = ('_name',)
+
+    class _Store(object):
+        pass
+
+    def __new__(cls, name):
+        self = super(_PropertyCacheDesc, cls).__new__(cls)
+        self._name = name
+        return self
+
+    def __get__(self, obj, cls):
+        top = _top_base(obj)
+        if self._name in top.__dict__:
+            s = top.__dict__[self._name]
+        else:
+            s = type(self)._Store()
+            top.__dict__[self._name] = s
+        if top is not obj:
+            obj.__dict__[self._name] = s
+        return s
+
+# Custom Structure and Union classes.
 
 class _MetaStruct(type(ctypes.Structure)):
     def __new__(mcls, name, bases, dic):
@@ -142,20 +181,26 @@ class _MetaUnion(type(ctypes.Union)):
 
 class Struct(ctypes.Structure):
     __metaclass__ = _MetaStruct
-    copy = copy
-    clear = clear
-    dump = dump
     __setattr__ = _wrap_setattr(ctypes.Structure.__setattr__)
     def __iter__(self):
         return iter((getattr(self, mbr[0]) for mbr in self._fields_))
 
 class Union(ctypes.Union):
     __metaclass__ = _MetaUnion
-    copy = copy
-    clear = clear
-    dump = dump
     __setattr__ = _wrap_setattr(ctypes.Union.__setattr__)
     # Union need no __iter__.
+
+for cls in [Struct, Union]:
+    s = '_permit_new_attr_'
+    if not hasattr(cls, s):
+        setattr(cls, s, False)
+    s = '_property_'
+    setattr(cls, s, _PropertyCacheDesc(s))
+    setattr(cls, '_top_base_', property(_top_base))
+    setattr(cls, 'copy', copy)
+    setattr(cls, 'dup', copy)
+    setattr(cls, 'clear', clear)
+    setattr(cls, 'dump', dump)
 
 __all__ = []
 
@@ -164,20 +209,4 @@ __all__ = []
 ##############################################################################
 
 if __name__ == '__main__':
-    import cPickle as cp
-    class Test(Struct):
-        _fields_ = [('name', c_char*16), ('nums', c_int*4*5*6)]
-    print type(Test().name)
-    print _ctypes_analyze(type(Test().name))
-    print _ctypes_analyze(type(Test().nums))
-    t = Test()
-    t.nums[0][0][0] = 111
-    t.nums[5][4][3] = 543.12
-    cp.dumps(t.nums)
-    cp.loads(cp.dumps(t.nums))
-    t2 = cp.loads(cp.dumps(t.nums))
-    print t2[0][0][0]
-    print t2[5][4][3]
-    reduce = _array_reduce
-    (Test*2)().dump()
     pass

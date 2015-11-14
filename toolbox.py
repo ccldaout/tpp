@@ -10,6 +10,21 @@ import time
 #                              Small utilities
 #----------------------------------------------------------------------------
 
+class _Printer(object):
+    __slots__ = ('_lock', 'print_name')
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self.print_name = os.getenv('TPP_PR_NAME')
+
+    def __call__(self, fmt, *args):
+        with self._lock:
+            if self.print_name:
+                fmt = threading.current_thread().name + ': ' +fmt
+            print fmt % args
+
+pr = _Printer()
+
 def alignP2(_z, p2):
     return ((_z | (p2-1)) + 1)
 
@@ -25,6 +40,7 @@ def no_except(func, ret_if_exc=None):
 
 class Counter(object):
     __slots__ = ('_v', '_lock')
+
     def __new__(cls):
         self = super(Counter, cls).__new__(cls)
         self._v = 0
@@ -38,14 +54,33 @@ class Counter(object):
 
 class Delegate(object):
     __slots__ = ('_funcs',)
+
     def __new__(cls):
         self = super(Delegate, cls).__new__(cls)
         self._funcs = []
         return self
 
     def __iadd__(self, func):
-        self._funcs.append(func)
+        if not func in self._funcs:
+            self._funcs.append(func)
         return self
+
+    def __isub__(self, func):
+        if func in self._funcs:
+            self._funcs.remove(func)
+        return self
+
+    def __contains__(self, func):
+        return func in self._funcs
+
+    def __nonzero__(self):
+        return bool(self._funcs)
+
+    def __len__(self):
+        return len(self._funcs)
+
+    def __iter__(self):
+        return iter(self._funcs)
 
     def __call__(self, *args, **kwargs):
         for f in self._funcs:
@@ -73,6 +108,7 @@ Null = Null()
 
 class Bomb(object):
     __slots__ = ('_exc',)
+
     def __new__(cls, exc):
         self = super(Bomb, cls).__new__(cls)
         super(Bomb, self).__setattr__('_exc', exc)

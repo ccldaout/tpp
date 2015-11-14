@@ -12,6 +12,7 @@ ___ = tb.no_except
 #----------------------------------------------------------------------------
 
 _ATTR_EXPORT = '_RPC_EXPORT'
+_ATTR_QUICK  = '_RPC_QUICK'
 _ATTR_CIDARG = '_RPC_CIDARG'
 
 class _ProxyFrontend(object):
@@ -33,17 +34,19 @@ class _ProxyFrontend(object):
         port = self._port
         msg = ['call', reply_id, self._proxy_id, args, kwargs]
         msg = _ProxyBackendManager.convert(port, msg)
-        if port.mainthread is tu.current_thread():
-            port.send(msg)
-            msg = port.main_loop(lambda m: m[0] == 'reply' and m[1] == reply_id)
-        else:
-            self._mbox.reserve(reply_id)
-            port.send(msg)
-            msg = self._mbox.wait(reply_id)
+        self._mbox.reserve(reply_id)
+        port.send(msg)
+        msg = self._mbox.wait(reply_id)
         if msg[2]:
             return _ProxyBackendManager.convert(port, msg[3])
         else:
             raise msg[3]
+
+    def convert(self, port):
+        if self._port == port:
+            return _ProxyPackage(-self._proxy_id)
+        else:
+            return _ProxyPackage(_ProxyBackendManager._register(self))
 
     @classmethod
     def reply(cls, msg):
@@ -51,9 +54,11 @@ class _ProxyFrontend(object):
         cls._mbox.post(msg[1], msg)
 
     def __del__(self):
-        ___(self._port.send)(['unref', self._proxy_id])
-        if hasattr(super(_ProxyFrontend, self), '__del__'):
-            super(_ProxyFrontend, self).__del__()
+        # [AD-HOC] try..except is to suppress error whene interpeter shutdown
+        try:
+            self._port.send(['unref', self._proxy_id])
+        except:
+            pass
 
 class _ProxyPackage(object):
     __slots__ = ['proxy_id']
@@ -65,6 +70,12 @@ class _ProxyPackage(object):
 
     def __repr__(self):
         return '<_ProxyPackage:%d>' % self.proxy_id
+
+    def convert(self, port):
+        if self.proxy_id > 0:
+            return _ProxyFrontend(port, self.proxy_id)
+        else:
+            return _ProxyBackendManager.get(-self.proxy_id)
 
 class _ProxyBackendManager(object):
     _lock = tu.Lock()
@@ -83,10 +94,10 @@ class _ProxyBackendManager(object):
         def _convert(v):
             if inspect.isbuiltin(v) or inspect.isclass(v):
                 return v
+            if isinstance(v, (_ProxyPackage, _ProxyFrontend)):
+                return v.convert(port)
             if callable(v):
                 return _ProxyPackage(cls._register(v))
-            if isinstance(v, _ProxyPackage):
-                return _ProxyFrontend(port, v.proxy_id)
             if isinstance(v, dict):
                 v = dict([(k, _convert(e)) for k, e in v.items()])
             elif isinstance(v, (list, tuple)):
@@ -95,19 +106,34 @@ class _ProxyBackendManager(object):
         return _convert(msg)
 
     @classmethod
-    def call(cls, port, reply_id, proxy_id, args, kwargs):
+    def _call(cls, port, reply_id, func, args, kwargs):
         try:
-            with cls._lock:
-                f = cls._proxy_db[proxy_id]
             args = cls.convert(port, args)
             kwargs = cls.convert(port, kwargs)
-            if hasattr(f, _ATTR_CIDARG):
-                ret = f(port.order, *args, **kwargs)
+            if hasattr(func, _ATTR_CIDARG):
+                ret = func(port.order, *args, **kwargs)
             else:
-                ret = f(*args, **kwargs)
+                ret = func(*args, **kwargs)
             port.send(['reply', reply_id, True, cls.convert(port, ret)])
         except Exception as e:
             port.send(['reply', reply_id, False, e])
+
+    @classmethod
+    def call(cls, port, reply_id, proxy_id, args, kwargs):
+        try:
+            with cls._lock:
+                func = cls._proxy_db[proxy_id]
+            if hasattr(func, _ATTR_QUICK):
+                cls._call(port, reply_id, func, args, kwargs)
+            else:
+                tu.threadpool.queue(cls._call, port, reply_id, func, args, kwargs)
+        except Exception as e:
+            port.send(['reply', reply_id, False, e])
+
+    @classmethod
+    def get(cls, proxy_id):
+        with cls._lock:
+            return cls._proxy_db[proxy_id]
 
     @classmethod
     def unref(cls, proxy_id):
@@ -133,9 +159,9 @@ class _RpcCommon(ipc.ServiceBase):
     def handle_SOCKERROR(self, port):
         pass
 
-class RpcServer(_RpcCommon):
+class _RpcServer(_RpcCommon):
     def __new__(cls, *args, **kwargs):
-        self = super(RpcServer, cls).__new__(cls)
+        self = super(_RpcServer, cls).__new__(cls)
         self._exports = []		# list of (frontend, name, doc)
         self._cb_accepted = tb.Delegate()
         self._cb_disconnected = tb.Delegate()
@@ -143,19 +169,27 @@ class RpcServer(_RpcCommon):
         return self
 
     @classmethod
-    def export(cls, arg=None):
+    def export(cls, f=None, **kwargs):
         def _export(func):
-            if isinstance(arg, str):
-                func.__name__ = arg
+            v = kwargs.pop('name', None)
+            if v:
+                func.__name__ = v
+            v = kwargs.pop('quick', False)
+            if v:
+                setattr(func, _ATTR_QUICK, True)
+            if kwargs:
+                raise TypeError('unknown keyword arguments: %s' % kwargs)
             setattr(func, _ATTR_EXPORT, True)
             vars = func.__code__.co_varnames
             if 'cid__' in vars and vars.index('cid__') == 1:
                 setattr(func, _ATTR_CIDARG, True)
             return func
-        if callable(arg):
-            return _export(arg)
-        else:
+        if callable(f) and not kwargs:
+            return _export(f)
+        elif f is None and kwargs:
             return _export
+        else:
+            raise TypeError('Invalid usage of @rpc.export')
 
     def exports(self, rpcitf):
         cnv = lambda v:_ProxyBackendManager.convert(None, v)
@@ -182,11 +216,12 @@ class RpcServer(_RpcCommon):
         return self.handle_DISCONNECTED(port)
 
 class _RpcClient(_RpcCommon):
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, initmo_s = 60, *args, **kwargs):
         self = super(_RpcClient, cls).__new__(cls)
         self._proxy = None
         self._proxy_cond = tu.Condition()
         self._port = None
+        self._initmo_s = initmo_s
         return self
 
     def _create_proxy(self, frontend, name, doc):
@@ -219,36 +254,53 @@ class _RpcClient(_RpcCommon):
     def proxy(self):
         with self._proxy_cond:
             while self._proxy is None:
-                self._proxy_cond.wait()
+                if not self._proxy_cond.wait(self._initmo_s):
+                    return None
             return self._proxy
 
 #----------------------------------------------------------------------------
 #                           Convenient interface
 #----------------------------------------------------------------------------
 
-export = RpcServer.export
+export = _RpcServer.export
 
 def server(addr, funcs_list, background=True):
-    svc = RpcServer()
+    svc = _RpcServer()
     for funcs in funcs_list:
         svc.exports(funcs)
     ipc.Acceptor(svc, addr).start(background)
 
 class client(object):
-    def __new__(cls, addr):
+    def __new__(cls, addr, initmo_s=2.0, background=True, lazy_setup=True):
         self = super(client, cls).__new__(cls)
-        self._rc = _RpcClient()
-        ipc.Connector(self._rc, addr).start()
+        self._prm = (addr, initmo_s, background)
+        self._lock = tu.RLock()
+        if not lazy_setup:
+            self._setup()
         return self
     
+    def _setup(self):
+        addr, initmo_s, bg = self._prm
+        self._rc = _RpcClient(initmo_s=initmo_s)
+        ipc.Connector(self._rc, addr, retry=False).start(background=bg)
+
     def __getattr__(self, name):
-        return getattr(self._rc.proxy, name)
+        with self._lock:
+            if name == '_rc':
+                self._setup()
+                return self._rc
+            v = getattr(self._rc.proxy, name)
+            self.__dict__[name] = v
+            return v
 
     def __del__(self):
-        self._rc.stop()
-        self._rc = None
-        if hasattr(super(client, self), '__del__'):
-            super(client, self).__del__()
+        # [AD-HOC] try..except is to suppress error whene interpeter shutdown
+        try:
+            if self._rc:
+                self._rc.stop()
+                self._rc = None
+        except:
+            pass
 
 #----------------------------------------------------------------------------
 #----------------------------------------------------------------------------

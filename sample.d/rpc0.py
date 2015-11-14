@@ -3,23 +3,26 @@ from tpp import toolbox as tb
 from tpp import rpc
 import threading
 
+#tu.pr.print_name = True
+
 addr = ('localhost', 55222)
 
 class Service(object):
-    @rpc.export
+    @rpc.export(quick=True)
     def toupper(self, s):
         '''string to upper'''
-        tu.pr('Service.toupper(%s)', s)
+        tu.pr('toupper: %s', s)
         return s.upper()
 
-    @rpc.export('allplus')
+    @rpc.export(name='allplus')
     def total(self, cid__, *args):
         '''sum of arguments'''
-        tu.pr('cid__: %s, args: < %s >', cid__, args)
+        tu.pr('total: cid__: %s, args: < %s >', cid__, args)
         return sum(args)
         
-    @rpc.export()
+    @rpc.export
     def apply(self, lis, func):
+        tu.pr('apply: %s', lis)
         return [func(v) for v in lis]
 
 def server():
