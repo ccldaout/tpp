@@ -130,17 +130,17 @@ class CSocket(object):
             buf = buf[n:]
             tmo_s = self.send_tmo_s
 
-    def shutdown(self, write=False, read=False):
-        if write and read:
-            m = socket.SHUT_RDWR
-        elif write:
-            m = socket.SHUT_WR
-        else:
-            m = socket.SHUT_RD
+    def shutdown(self, m):
         try:
             self._sock.shutdown(m)
         except:
             traceback.print_exc()
+
+    def shut_read(self):
+        self.shutdown(socket.SHUT_RD)
+
+    def shut_write(self):
+        self.shutdown(socket.SHUT_WR)
 
 #----------------------------------------------------------------------------
 #                           Simple IPC framework
@@ -272,7 +272,7 @@ class IPCPort(object):
             except Exception as e:
                 traceback.print_exc()
                 self._send_error = (e, msg)
-                ___(self._csock.shutdown)(read=True)
+                self._csock.shut_read()
                 return
 
     def _send_thread(self):
@@ -283,7 +283,7 @@ class IPCPort(object):
         self._service.unlink(self)
         # [AD-HOC] try..except is to suppress error whene interpeter shutdown
         try:
-            self._csock.shutdown(write=True)
+            self._csock.shut_write()
             self._send_queue.stop(soon=True)
         except:
             pass
@@ -439,7 +439,7 @@ class SimpleClient(object):
         self._csock.send_x(s, n)
         
     def send_fin(self):
-        self._csock.shutdown(write=True)
+        self._csock.shut_write()
         
     def close(self):
         self._csock.close()

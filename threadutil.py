@@ -4,7 +4,9 @@ import threading
 import time
 import traceback
 from threading import *
-from tpp.toolbox import pr	# for compatibility
+from tpp import toolbox as tb
+
+pr = tb.pr			# for compatibility
 
 #-----------------------------------------------------------------------------
 #                 Extend class to avoid blocking main thread
@@ -107,11 +109,25 @@ class Queue(object):
 #                                Thread pool
 #-----------------------------------------------------------------------------
 
+class _Property(object):
+    def __init__(self, attr):
+        self._attr = attr
+
+    def __get__(self, obj, cls):
+        return getattr(obj, self._attr)
+
+    def __set__(self, obj, val):
+        return setattr(obj, self._attr, val)
+
 class ThreadPool(object):
     _g_lock = threading.Lock()
     _g_count = 0
 
-    def __new__(cls, thread_max=256, thread_tmo_s=120, thread_tmo_lwm=1):
+    thread_max = tb.SimpleProperty('_c_max')
+    thread_lwm = tb.SimpleProperty('_c_lwm')
+    thread_tmo = tb.SimpleProperty('_c_tmo')
+
+    def __new__(cls, thread_max=8, thread_lwm=1, thread_tmo=120):
         self = super(ThreadPool, cls).__new__(cls)
         with cls._g_lock:
             self._name = 'POOL#%d' % cls._g_count
@@ -126,17 +142,17 @@ class ThreadPool(object):
         self._c_cur = 0
         self._c_act = 0
         self._c_max = thread_max		# must be parameter
-        self._c_tmo_s = thread_tmo_s
-        self._c_tmo_lwm = thread_tmo_lwm
+        self._c_lwm = thread_lwm
+        self._c_tmo = thread_tmo
         return self
     
     def _worker_thread(self):
         self._no_worker.clear()
         while True:
-            action, args, kwargs = self._que.get(self._c_tmo_s)
+            action, args, kwargs = self._que.get(self._c_tmo)
             if action is False:			# timeout
                 with self._lock:
-                    if self._c_cur > self._c_tmo_lwm:
+                    if self._c_cur > self._c_lwm:
                         self._c_cur -= 1
                         return
                 continue

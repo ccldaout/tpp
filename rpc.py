@@ -264,7 +264,11 @@ class _RpcClient(_RpcCommon):
 
 export = _RpcServer.export
 
-def server(addr, funcs_list, background=True):
+def server(addr, funcs_list, background=True, thread_max=0, thread_lwm=0):
+    if tu.threadpool.thread_max < thread_max:
+        tu.threadpool.thread_max = thread_max
+    if tu.threadpool.thread_lwm < thread_lwm:
+        tu.threadpool.thread_lwm = thread_lwm
     svc = _RpcServer()
     for funcs in funcs_list:
         svc.exports(funcs)

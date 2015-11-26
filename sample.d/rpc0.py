@@ -22,11 +22,16 @@ class Service(object):
         
     @rpc.export
     def apply(self, lis, func):
+        if func is None:
+            func = self.show
         tu.pr('apply: %s', lis)
         return [func(v) for v in lis]
 
+    def show(self, v):
+        return v
+
 def server():
-    rpc.server(addr, [Service()])
+    rpc.server(addr, [Service()], thread_max=32, thread_lwm=8)
 
 api = None
 

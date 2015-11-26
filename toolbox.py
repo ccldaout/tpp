@@ -11,17 +11,18 @@ import time
 #----------------------------------------------------------------------------
 
 class _Printer(object):
-    __slots__ = ('_lock', 'print_name')
+    __slots__ = ('print_name')
+    _lock = threading.Lock()
 
     def __init__(self):
-        self._lock = threading.Lock()
         self.print_name = os.getenv('TPP_PR_NAME')
 
     def __call__(self, fmt, *args):
+        if self.print_name:
+            fmt = threading.current_thread().name + ': ' +fmt
+        s = fmt % args
         with self._lock:
-            if self.print_name:
-                fmt = threading.current_thread().name + ': ' +fmt
-            print fmt % args
+            print s
 
 pr = _Printer()
 
@@ -38,19 +39,17 @@ def no_except(func, ret_if_exc=None):
             return ret_if_exc
     return _f
 
-class Counter(object):
-    __slots__ = ('_v', '_lock')
+class SimpleProperty(object):
+    def __init__(self, attr, encoder=None, decoder=None):
+        self._enc = encoder if encoder else lambda v:v
+        self._dec = decoder if decoder else lambda v:v
+        self._attr = attr
 
-    def __new__(cls):
-        self = super(Counter, cls).__new__(cls)
-        self._v = 0
-        self._lock = threading.Lock()
-        return self
+    def __get__(self, obj, cls):
+        return self._dec(getattr(obj, self._attr))
 
-    def __call__(self):
-        with self._lock:
-            self._v += 1
-            return self._v
+    def __set__(self, obj, val):
+        return setattr(obj, self._attr, self._enc(val))
 
 class Delegate(object):
     __slots__ = ('_funcs',)
@@ -85,6 +84,20 @@ class Delegate(object):
     def __call__(self, *args, **kwargs):
         for f in self._funcs:
             f(*args, **kwargs)
+
+class Counter(object):
+    __slots__ = ('_v', '_lock')
+
+    def __new__(cls):
+        self = super(Counter, cls).__new__(cls)
+        self._v = 0
+        self._lock = threading.Lock()
+        return self
+
+    def __call__(self):
+        with self._lock:
+            self._v += 1
+            return self._v
 
 class Null(object):
     def __nonzero__(self):
