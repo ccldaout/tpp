@@ -109,16 +109,6 @@ class Queue(object):
 #                                Thread pool
 #-----------------------------------------------------------------------------
 
-class _Property(object):
-    def __init__(self, attr):
-        self._attr = attr
-
-    def __get__(self, obj, cls):
-        return getattr(obj, self._attr)
-
-    def __set__(self, obj, val):
-        return setattr(obj, self._attr, val)
-
 class ThreadPool(object):
     _g_lock = threading.Lock()
     _g_count = 0
