@@ -202,6 +202,7 @@ class OnetimeMsgBox(object):
                 if cls._key < key:
                     cls._key = key
             self._mbox[key] = None
+            return key
     
     def cancel(self, key):
         with self._cond:
