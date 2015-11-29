@@ -17,8 +17,6 @@ _ATTR_CIDARG = '_RPC_CIDARG'
 
 class _ProxyFrontend(object):
     __slots__ = ['_proxy_id', '_port', '__name__', '__doc__']
-    _lock = tu.Lock()
-    _reply_id = 0
     _mbox = tb.OnetimeMsgBox()
 
     def __new__(cls, port, proxy_backend_id):
@@ -28,13 +26,10 @@ class _ProxyFrontend(object):
         return self
 
     def __call__(self, *args, **kwargs):
-        with self._lock:
-            type(self)._reply_id += 1
-            reply_id = self._reply_id
         port = self._port
+        reply_id = self._mbox.reserve()
         msg = ['call', reply_id, self._proxy_id, args, kwargs]
         msg = _ProxyBackendManager.convert(port, msg)
-        self._mbox.reserve(reply_id)
         port.send(msg)
         msg = self._mbox.wait(reply_id)
         if msg[2]:
