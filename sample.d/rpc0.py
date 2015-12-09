@@ -39,6 +39,7 @@ def client():
     global api
     api = rpc.client(addr)
 
+@rpc.export(quick=True, no_reply=True)
 def show(v):
     print 'show:', v
     return v * 10

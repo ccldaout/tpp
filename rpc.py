@@ -14,23 +14,30 @@ ___ = tb.no_except
 _ATTR_EXPORT = '_RPC_EXPORT'
 _ATTR_QUICK  = '_RPC_QUICK'
 _ATTR_CIDARG = '_RPC_CIDARG'
+_ATTR_NOREPL = '_RPC_NOREPL'
 
 class _ProxyFrontend(object):
-    __slots__ = ['_proxy_id', '_port', '__name__', '__doc__']
+    __slots__ = ['_proxy_id', '_port', '_no_reply', '__name__', '__doc__']
     _mbox = tb.OnetimeMsgBox()
 
-    def __new__(cls, port, proxy_backend_id):
+    def __new__(cls, port, proxy_backend_id, no_reply):
         self = super(_ProxyFrontend, cls).__new__(cls)
         self._port = port
         self._proxy_id = proxy_backend_id
+        self._no_reply = no_reply
         return self
 
     def __call__(self, *args, **kwargs):
         port = self._port
-        reply_id = self._mbox.reserve()
+        if self._no_reply:
+            reply_id = 0
+        else:
+            reply_id = self._mbox.reserve()
         msg = ['call', reply_id, self._proxy_id, args, kwargs]
         msg = _ProxyBackendManager.convert(port, msg)
         port.send(msg)
+        if self._no_reply:
+            return
         msg = self._mbox.wait(reply_id)
         if msg[2]:
             return _ProxyBackendManager.convert(port, msg[3])
@@ -39,9 +46,9 @@ class _ProxyFrontend(object):
 
     def convert(self, port):
         if self._port == port:
-            return _ProxyPackage(-self._proxy_id)
+            return _ProxyPackage(-self._proxy_id, self._no_reply)
         else:
-            return _ProxyPackage(_ProxyBackendManager._register(self))
+            return _ProxyPackage(_ProxyBackendManager._register(self), self._no_reply)
 
     @classmethod
     def reply(cls, msg):
@@ -56,11 +63,12 @@ class _ProxyFrontend(object):
             pass
 
 class _ProxyPackage(object):
-    __slots__ = ['proxy_id']
+    __slots__ = ['proxy_id', 'no_reply']
 
-    def __new__(cls, proxy_backend_id = None):
+    def __new__(cls, proxy_backend_id=None, no_reply=False):
         self = super(_ProxyPackage, cls).__new__(cls)
         self.proxy_id = proxy_backend_id
+        self.no_reply = no_reply
         return self
 
     def __repr__(self):
@@ -68,7 +76,7 @@ class _ProxyPackage(object):
 
     def convert(self, port):
         if self.proxy_id > 0:
-            return _ProxyFrontend(port, self.proxy_id)
+            return _ProxyFrontend(port, self.proxy_id, self.no_reply)
         else:
             return _ProxyBackendManager.get(-self.proxy_id)
 
@@ -92,7 +100,7 @@ class _ProxyBackendManager(object):
             if isinstance(v, (_ProxyPackage, _ProxyFrontend)):
                 return v.convert(port)
             if callable(v):
-                return _ProxyPackage(cls._register(v))
+                return _ProxyPackage(cls._register(v), hasattr(v, _ATTR_NOREPL))
             if isinstance(v, dict):
                 v = dict([(k, _convert(e)) for k, e in v.items()])
             elif isinstance(v, (list, tuple)):
@@ -109,9 +117,11 @@ class _ProxyBackendManager(object):
                 ret = func(port.order, *args, **kwargs)
             else:
                 ret = func(*args, **kwargs)
-            port.send(['reply', reply_id, True, cls.convert(port, ret)])
+            if reply_id:
+                port.send(['reply', reply_id, True, cls.convert(port, ret)])
         except Exception as e:
-            port.send(['reply', reply_id, False, e])
+            if reply_id:
+                port.send(['reply', reply_id, False, e])
 
     @classmethod
     def call(cls, port, reply_id, proxy_id, args, kwargs):
@@ -123,7 +133,8 @@ class _ProxyBackendManager(object):
             else:
                 tu.threadpool.queue(cls._call, port, reply_id, func, args, kwargs)
         except Exception as e:
-            port.send(['reply', reply_id, False, e])
+            if reply_id:
+                port.send(['reply', reply_id, False, e])
 
     @classmethod
     def get(cls, proxy_id):
@@ -172,6 +183,9 @@ class _RpcServer(_RpcCommon):
             v = kwargs.pop('quick', False)
             if v:
                 setattr(func, _ATTR_QUICK, True)
+            v = kwargs.pop('no_reply', False)
+            if v:
+                setattr(func, _ATTR_NOREPL, True)
             if kwargs:
                 raise TypeError('unknown keyword arguments: %s' % kwargs)
             setattr(func, _ATTR_EXPORT, True)
