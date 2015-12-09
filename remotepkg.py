@@ -7,7 +7,7 @@ import os.path
 import sys
 import traceback
 from StringIO import StringIO
-from zipfile import PyZipFile, ZipFile
+import tarfile
 from tpp import rpc
 from tpp import toolbox as tb
 
@@ -16,20 +16,20 @@ ___ = tb.no_except
 #----------------------------------------------------------------------------
 #----------------------------------------------------------------------------
 
-def make_zipstr(pkgroot):
+def archive(pkgroot):
     sf = StringIO()
-    pyzip = PyZipFile(sf, 'w')
-    pyzip.writepy(os.path.expanduser(pkgroot))
-    pyzip.close()
-    zipcontents = sf.getvalue()
+    ar = tarfile.open(fileobj=sf, mode='w')
+    ar.add(os.path.expanduser(pkgroot), arcname=os.path.basename(pkgroot))
+    ar.close()
+    ar_str = sf.getvalue()
     sf.close()
-    return zipcontents
+    return ar_str
 
-def make_unzipstr(zippedstr, pkgstore):
-    sf = StringIO(zippedstr)
-    pyzip = ZipFile(sf, 'r')
-    pyzip.extractall(os.path.expanduser(pkgstore))
-    pyzip.close()
+def unarchive(ar_str, pkgstore):
+    sf = StringIO(ar_str)
+    ar = tarfile.open(fileobj=sf, mode='r')
+    ar.extractall(os.path.expanduser(pkgstore))
+    ar.close()
 
 #----------------------------------------------------------------------------
 #----------------------------------------------------------------------------
@@ -43,7 +43,7 @@ class PkgService(object):
                 ___(os.makedirs)(os.path.dirname(self._cfpath))
                 with open(self._cfpath, 'w') as f:
                     data = {'EXPORTS':['pkg-parent-directory',
-                                      'pkg-parent-directory2']}
+                                       'pkg-parent-directory2']}
                     json.dump(data, f, sort_keys=True, indent=2)
             except:
                 traceback.print_exc()
@@ -53,7 +53,7 @@ class PkgService(object):
         try:
             with open(self._cfpath) as f:
                 conf = json.load(f)
-            dirs = conf.get('EXPORTS', ['~/tpp.remotepkg/exports'])
+            dirs = conf.get('EXPORTS', ['~/.tpp/remotepkg/exports'])
             for d in dirs:
                 pkgtop = os.path.join(tb.fn.eval(d), pkgname)
                 sno = int(___(os.path.getmtime, 0)(pkgtop))
@@ -68,10 +68,10 @@ class PkgService(object):
         return sno
 
     @rpc.export
-    def get_zip(self, pkgname):
+    def get_archive(self, pkgname):
         path, sno = self.get_pkginfo(pkgname)
         if path:
-            return ___(make_zipstr, None)(path)
+            return ___(archive, None)(path)
         else:
             return None
 
@@ -109,7 +109,7 @@ class Finder(object):
                     json.dump(self._conf, f, sort_keys=True, indent=2)
 
     def _get_pkginfo(self, topname):
-        store = self._conf.get('STORE', '~/tmp/tpp.remotepkg')
+        store = self._conf.get('STORE', '~/.tpp/remotepkg/cache')
         pkgdb = self._conf.get('PKGDB', {})
         tmo_s = self._conf.get('TMO_s', 0.2)
         addr = pkgdb.get(topname, None)
@@ -155,10 +155,10 @@ class Finder(object):
             return store
 
         ___(os.makedirs)(store)
-        zs = api.get_zip(topname)
-        if zs is None:
+        ar = api.get_archive(topname)
+        if ar is None:
             return None
-        make_unzipstr(zs, store)
+        unarchive(ar, store)
         self._put_sno(store, topname, server_sno)
 
         return store
