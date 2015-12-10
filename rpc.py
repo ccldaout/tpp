@@ -225,12 +225,12 @@ class _RpcServer(_RpcCommon):
         return self.handle_DISCONNECTED(port)
 
 class _RpcClient(_RpcCommon):
-    def __new__(cls, initmo_s = 60, *args, **kwargs):
+    def __new__(cls, itmo_s, *args, **kwargs):
         self = super(_RpcClient, cls).__new__(cls)
         self._proxy = None
         self._proxy_cond = tu.Condition()
         self._port = None
-        self._initmo_s = initmo_s
+        self._itmo_s = itmo_s
         return self
 
     def _create_proxy(self, frontend, name, doc):
@@ -263,7 +263,7 @@ class _RpcClient(_RpcCommon):
     def proxy(self):
         with self._proxy_cond:
             while self._proxy is None:
-                if not self._proxy_cond.wait(self._initmo_s):
+                if not self._proxy_cond.wait(self._itmo_s):
                     return None
             return self._proxy
 
@@ -284,18 +284,19 @@ def server(addr, funcs_list, background=True, thread_max=0, thread_lwm=0):
     ipc.Acceptor(svc, addr).start(background)
 
 class client(object):
-    def __new__(cls, addr, initmo_s=2.0, background=True, lazy_setup=True):
+    def __new__(cls, addr,
+                itmo_s=2.0, ctmo_s=None, background=True, lazy_setup=True):
         self = super(client, cls).__new__(cls)
-        self._prm = (addr, initmo_s, background)
+        self._prm = (addr, itmo_s, ctmo_s, background)
         self._lock = tu.RLock()
         if not lazy_setup:
             self._setup()
         return self
     
     def _setup(self):
-        addr, initmo_s, bg = self._prm
-        self._rc = _RpcClient(initmo_s=initmo_s)
-        ipc.Connector(self._rc, addr, retry=False).start(background=bg)
+        addr, itmo_s, ctmo_s, bg = self._prm
+        self._rc = _RpcClient(itmo_s=itmo_s)
+        ipc.Connector(self._rc, addr, retry=False, ctmo_s=ctmo_s).start(background=bg)
 
     def __getattr__(self, name):
         with self._lock:

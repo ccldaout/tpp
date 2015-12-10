@@ -22,7 +22,7 @@ class CSocket(object):
     def __getattr__(self, attr):
         return getattr(self._sock, attr)
     
-    def __new__(cls, addr, server=False, backlog=2):
+    def __new__(cls, addr, server=False, backlog=2, ctmo_s=None):
         self = super(CSocket, cls).__new__(cls)
         self.send_tmo_s = 120
         self.init_recv_tmo_s = None
@@ -54,7 +54,9 @@ class CSocket(object):
             else:
                 self.tcpnodelay()
                 self.tcpkeepalive()
+                self.settimeout(ctmo_s)
                 self.connect(addr)
+                self.settimeout(None)
         except:
             self.close()
             raise
@@ -341,15 +343,17 @@ class IPCPort(object):
         ___(self._send_queue.stop)(soon)
 
 class Connector(object):
-    def __new__(cls, service_object, addr, retry=True, recover=False, packer=None):
+    def __new__(cls, service_object, addr,
+                retry=True, recover=False, ctmo_s=None, packer=None):
         self = super(Connector, cls).__new__(cls)
         self._service = service_object
-        self._packer = packer
         self._addr = addr
-        self._recover = recover
         self._retry = retry
         self._retry_itv_s = 5
         self._retry_exc_n = 60 / self._retry_itv_s
+        self._recover = recover
+        self._ctmo_s = ctmo_s
+        self._packer = packer
         return self
 
     def _main_thread(self):
@@ -358,7 +362,7 @@ class Connector(object):
         while True:
             csock = None
             try:
-                csock = CSocket(self._addr) 
+                csock = CSocket(self._addr, ctmo_s=self._ctmo_s)
                 self._port = IPCPort(self._service, self._packer, csock)
                 self._port.start(fin_func)
                 return
