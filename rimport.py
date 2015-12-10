@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import glob
 import imp
 import json
 import os
@@ -25,10 +26,10 @@ def archive(pkgroot):
     sf.close()
     return ar_str
 
-def unarchive(ar_str, pkgstore):
+def unarchive(ar_str, pkgcache):
     sf = StringIO(ar_str)
     ar = tarfile.open(fileobj=sf, mode='r')
-    ar.extractall(os.path.expanduser(pkgstore))
+    ar.extractall(os.path.expanduser(pkgcache))
     ar.close()
 
 #----------------------------------------------------------------------------
@@ -49,31 +50,38 @@ class PkgService(object):
                 traceback.print_exc()
         return self
 
-    def get_pkginfo(self, pkgname):
+    def _get_exports(self):
+        es = {}
+        dirs = ['~/.tpp/rimport/exports']
         try:
             with open(self._cfpath) as f:
                 conf = json.load(f)
-            dirs = conf.get('EXPORTS', ['~/.tpp/remotepkg/exports'])
-            for d in dirs:
-                pkgtop = os.path.join(tb.fn.eval(d), pkgname)
-                sno = int(___(os.path.getmtime, 0)(pkgtop))
-                if sno:
-                    return pkgtop, sno
+            dirs = conf.get('EXPORTS', dirs)
         except:
-            return None, None
+            pass
+        for d in dirs:
+            d = tb.fn.eval(d)
+            for pkgd in glob.glob(os.path.join(d, '*')):
+                ini = os.path.join(pkgd, '__init__.py')
+                if os.path.isdir(pkgd) and os.path.isfile(ini):
+                    pkgn = os.path.basename(pkgd)
+                    if pkgn not in es:
+                        es[pkgn] = pkgd
+        return es
+
+    @rpc.export
+    def get_exports(self):
+        return self._get_exports().keys()
 
     @rpc.export
     def get_serial(self, pkgname):
-        path, sno = self.get_pkginfo(pkgname)
-        return sno
+        pkgd = self._get_exports().get(pkgname, None)
+        return int(___(os.path.getmtime, 0)(pkgd))
 
     @rpc.export
     def get_archive(self, pkgname):
-        path, sno = self.get_pkginfo(pkgname)
-        if path:
-            return ___(archive, None)(path)
-        else:
-            return None
+        pkgd = self._get_exports().get(pkgname, None)
+        return ___(archive, None)(pkgd)
 
 #----------------------------------------------------------------------------
 #----------------------------------------------------------------------------
@@ -92,30 +100,41 @@ class Loader(object):
         
 class Finder(object):
     def __init__(self, conf):
-        self._storecache = {}
+        self._pkgcache = {}
+        self._svrcache = {}
         conf = tb.fn.eval(conf)
         try:
             self._conf = {}
             with open(conf) as f:
                 self._conf = json.load(f)
+            self._setup_svrcache()
         except:
-            self._conf = {'STORE':'store-directory',
+            self._conf = {'CACHE':'~/.tpp/rimport/cache',
                           'TMO_s':0.2,
-                          'PKGDB':{'pkg-name':('host-name', 55222),
-                                   'pkg-name2':('host-name2', 55222)}}
+                          'SERVER':[('localhost', 55222)]}
             if not os.path.exists(conf):
                 ___(os.makedirs)(os.path.dirname(conf))
                 with open(conf, 'w') as f:
                     json.dump(self._conf, f, sort_keys=True, indent=2)
 
-    def _get_pkginfo(self, topname):
-        store = self._conf.get('STORE', '~/.tpp/remotepkg/cache')
-        pkgdb = self._conf.get('PKGDB', {})
-        tmo_s = self._conf.get('TMO_s', 0.2)
-        addr = pkgdb.get(topname, None)
-        if addr and store:
-            return addr, tb.fn.eval(store), tmo_s
-        return None, None, None
+    def _setup_svrcache(self):
+        tmo_s = self._get_tmo_s()
+        svrs = self._get_servers()
+        for addr in svrs:
+            api = ___(rpc.client)(tuple(addr), itmo_s=0.05, ctmo_s=tmo_s,
+                                  background=False, lazy_setup=False)
+            if api:
+                for pkg in api.get_exports():
+                    self._svrcache[pkg] = tuple(addr)
+
+    def _get_cache(self):
+        return tb.fn.eval(self._conf.get('CACHE', '~/.tpp/rimport/cache'))
+
+    def _get_tmo_s(self):
+        return self._conf.get('TMO_s', 0.2)
+        
+    def _get_servers(self):
+        return self._conf.get('SERVER', [])
 
     def _get_sno(self, store, topname):
         s = os.path.join(store, topname)
@@ -136,46 +155,53 @@ class Finder(object):
         except:
             traceback.print_exc()
 
-    def _loadpkg_if(self, topname):
-        addr, store, tmo_s = self._get_pkginfo(topname)
+    def _select_server(self, topname):
+        tmo_s = self._get_tmo_s()
+        addr = self._svrcache.get(topname, None)
         if addr is None:
             return None
+        return  ___(rpc.client)(addr, itmo_s=0.05, ctmo_s=tmo_s,
+                                background=False, lazy_setup=False)
 
-        api = ___(rpc.client)(tuple(addr), initmo_s=tmo_s, background=False, lazy_setup=False)
+    def _loadpkg_if(self, topname):
+        cache = self._get_cache()
+
+        api = self._select_server(topname)
         if api is None:
-            if os.path.isdir(os.path.join(store, topname)):
-                return store
+            if os.path.isdir(os.path.join(cache, topname)):
+                return cache
             return None
+
         server_sno = api.get_serial(topname)
         if server_sno is None:
             return None
 
-        local_sno = self._get_sno(store, topname)
+        local_sno = self._get_sno(cache, topname)
         if isinstance(local_sno, int) and local_sno == server_sno:
-            return store
+            return cache
 
-        ___(os.makedirs)(store)
+        ___(os.makedirs)(cache)
         ar = api.get_archive(topname)
         if ar is None:
             return None
-        unarchive(ar, store)
-        self._put_sno(store, topname, server_sno)
+        unarchive(ar, cache)
+        self._put_sno(cache, topname, server_sno)
 
-        return store
+        return cache
 
     def find_module(self, modname, paths=None):
-        topname = modname.split('.')[0]
+        pkgtop = modname.split('.')[0]
 
-        if topname in self._storecache:
-            store = self._storecache[topname]
+        if pkgtop in self._pkgcache:
+            cache = self._pkgcache[pkgtop]
         else:
-            store = self._loadpkg_if(topname)
-            self._storecache[topname] = store
-        if store is None:
+            cache = self._loadpkg_if(pkgtop)
+            self._pkgcache[pkgtop] = cache
+        if cache is None:
             return None
         
         name_fs = modname.replace('.', os.path.sep)
-        path_fs = os.path.join(store, name_fs)
+        path_fs = os.path.join(cache, name_fs)
 
         if os.path.isdir(path_fs):
             return Loader(modname, path_fs, ('', '', imp.PKG_DIRECTORY))
@@ -195,15 +221,15 @@ if __name__ == '__main__':
     def server(addr, conf):
         rpc.server(addr, [PkgService(conf)], background=False)
     if len(sys.argv) == 1:
-        print 'Usage: remotepkg host:port [server-conf]'
+        print 'Usage: rimport host:port [server-conf]'
         exit(1)
     addr = sys.argv[1].split(':')
     addr[1] = int(addr[1])
     if len(addr) == 3:
         conf = sys.argv[2]
     else:
-        conf = '~/.tpp/remotepkg/server.json'
+        conf = '~/.tpp/rimport/server.json'
     server(tuple(addr), conf)
 else:
-    conf = '~/.tpp/remotepkg/client.json'
+    conf = '~/.tpp/rimport/client.json'
     sys.meta_path.append(Finder(conf))
