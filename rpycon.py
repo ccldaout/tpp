@@ -1,5 +1,5 @@
 #!/usr/bin/python
-# -*- coding: euc-jp -*-
+# -*- coding: utf-8 -*-
 
 import code
 import sys
@@ -97,4 +97,8 @@ if __name__ == '__main__':
     if not sys.argv:
         print 'Usage: rcon host:port'
     else:
+        try:
+            import readline
+        except:
+            pass
         client(sys.argv[0])
