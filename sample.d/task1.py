@@ -1,7 +1,10 @@
 import time
 import gc
 from tpp import task
+from tpp import threadutil as tu
 from tpp.threadutil import pr, test_cancel
+
+pr.print_name = True
 
 def act(name, intv_s, cnt):
     def clean():
@@ -33,7 +36,7 @@ else:
     t = ((t1|t2|t3) & (t4+t5) & t6) + t7
 
 pr('main ... starting')
-t.start()
+t.start(tu.ThreadPool(thread_max=3).start())
 pr('main ... started')
 r = t.result
 pr('main ... result: %s', r)
