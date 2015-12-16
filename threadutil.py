@@ -38,6 +38,7 @@ def Thread(**kwargs):
     t.join = join_wrapper(t, t.join)
     t._canceling = threading.Event()
     t.cancel = (lambda thr: lambda: thr._canceling.set())(t)
+    t.clear_cancel = (lambda thr: lambda: thr._canceling.clear())(t)
     return t
 
 class Condition(type(threading.Condition())):
@@ -157,6 +158,7 @@ class ThreadPool(object):
                 self._c_act += 1
                 self._c_que -= 1
             try:
+                threading.current_thread().clear_cancel()
                 action(*args, **kwargs)
             except:
                 traceback.print_exc()
