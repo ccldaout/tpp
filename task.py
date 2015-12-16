@@ -53,17 +53,14 @@ class _TaskBase(object):
             return self.__add_operand(other)
         return _TaskSequence(self, other)
 
-    def __prologue(self):
-        if self.__is_started.is_set():
-            raise RuntimeError('Task is already started.')
-        self.__is_started.set()
-
     def start(self, threadpool=None):
         if threadpool:
             self.threadpool = threadpool
         else:
             self.threadpool = tu.threadpool
-        self.__prologue()
+        if self.__is_started.is_set():
+            return self
+        self.__is_started.set()
         self._start()
         return self
 
