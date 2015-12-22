@@ -34,17 +34,17 @@ class _ProxyFrontend(object):
         else:
             reply_id = self._mbox.reserve()
         msg = ['call', reply_id, self._proxy_id, args, kwargs]
-        msg = _ProxyBackendManager.convert(port, msg)
+        msg = _ProxyBackendManager.encode(port, msg)
         port.send(msg)
         if self._no_reply:
             return
         msg = self._mbox.wait(reply_id)
         if msg[2]:
-            return _ProxyBackendManager.convert(port, msg[3])
+            return _ProxyBackendManager.decode(port, msg[3])
         else:
             raise msg[3]
 
-    def convert(self, port):
+    def encode(self, port):
         if self._port == port:
             return _ProxyPackage(-self._proxy_id, self._no_reply)
         else:
@@ -74,7 +74,7 @@ class _ProxyPackage(object):
     def __repr__(self):
         return '<_ProxyPackage:%d>' % self.proxy_id
 
-    def convert(self, port):
+    def decode(self, port):
         if self.proxy_id > 0:
             return _ProxyFrontend(port, self.proxy_id, self.no_reply)
         else:
@@ -93,32 +93,44 @@ class _ProxyBackendManager(object):
             return cls._proxy_id
 
     @classmethod
-    def convert(cls, port, msg):
-        def _convert(v):
+    def encode(cls, port, msg):
+        def _encode(v):
+            if isinstance(v, _ProxyFrontend):
+                return v.encode(port)
             if inspect.isbuiltin(v) or inspect.isclass(v):
                 return v
-            if isinstance(v, (_ProxyPackage, _ProxyFrontend)):
-                return v.convert(port)
             if callable(v):
                 return _ProxyPackage(cls._register(v), hasattr(v, _ATTR_NOREPL))
             if isinstance(v, dict):
-                v = dict([(k, _convert(e)) for k, e in v.items()])
+                v = dict([(k, _encode(e)) for k, e in v.items()])
             elif isinstance(v, (list, tuple)):
-                v = [_convert(e) for e in v]
+                v = [_encode(e) for e in v]
             return v
-        return _convert(msg)
+        return _encode(msg)
+
+    @classmethod
+    def decode(cls, port, msg):
+        def _decode(v):
+            if isinstance(v, _ProxyPackage):
+                return v.decode(port)
+            if isinstance(v, dict):
+                v = dict([(k, _decode(e)) for k, e in v.items()])
+            elif isinstance(v, (list, tuple)):
+                v = [_decode(e) for e in v]
+            return v
+        return _decode(msg)
 
     @classmethod
     def _call(cls, port, reply_id, func, args, kwargs):
         try:
-            args = cls.convert(port, args)
-            kwargs = cls.convert(port, kwargs)
+            args = cls.decode(port, args)
+            kwargs = cls.decode(port, kwargs)
             if hasattr(func, _ATTR_CIDARG):
                 ret = func(port.order, *args, **kwargs)
             else:
                 ret = func(*args, **kwargs)
             if reply_id:
-                port.send(['reply', reply_id, True, cls.convert(port, ret)])
+                port.send(['reply', reply_id, True, cls.encode(port, ret)])
         except Exception as e:
             if reply_id:
                 port.send(['reply', reply_id, False, e])
@@ -201,7 +213,7 @@ class _RpcServer(_RpcCommon):
             raise TypeError('Invalid usage of @rpc.export')
 
     def exports(self, rpcitf):
-        cnv = lambda v:_ProxyBackendManager.convert(None, v)
+        cnv = lambda v:_ProxyBackendManager.encode(None, v)
         for k, v in inspect.getmembers(rpcitf):
             if k[0] != '_' and callable(v) and hasattr(v, _ATTR_EXPORT):
                 self._exports.append((cnv(v), v.__name__, v.__doc__))
@@ -246,7 +258,7 @@ class _RpcClient(_RpcCommon):
         class Proxies(object):
             pass
         proxy = Proxies()
-        for f, n, d in _ProxyBackendManager.convert(port, msg[1]):
+        for f, n, d in _ProxyBackendManager.decode(port, msg[1]):
             setattr(proxy, n, self._create_proxy(f, n, d))
         with self._proxy_cond:
             self._proxy = proxy
