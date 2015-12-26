@@ -59,12 +59,8 @@ def clear(self):
 
 def _wrap_setattr(setattr_):
     def _setattr(self, mbr, val):
-        for f in self._fields_:
-            if f[0] == mbr:
-                break
-        else:
-            if not self._permit_new_attr_:
-                raise AttributeError('%s has no member %s.' % (type(self).__name__, mbr))
+        if mbr not in self._permit_attrs_ and not self._permit_new_attr_:
+            raise AttributeError('%s has no member %s.' % (type(self).__name__, mbr))
         if isinstance(val, float):
             try:
                 setattr_(self, mbr, val)
@@ -123,12 +119,6 @@ def array(ctype):
         ctype2.__setitem__ = _wrap_setitem(ctype2.__setitem__)
     return orgctype
 
-def _setup_array(dic):
-    if '_fields_' in dic:
-        for fld in dic['_fields_']:
-            if is_array(fld[1]):
-                array(fld[1])
-
 # Additional properties for ctypes structure object.
 
 def _top_base(self):
@@ -161,10 +151,37 @@ class _PropertyCacheDesc(object):
 
 # Custom Structure and Union classes.
 
+def _setup(cls):
+    if hasattr(cls, '_fields_'):
+        flds = cls._fields_
+
+        attrs = [f[0] for f in flds]
+        name = '_permit_new_attr_'
+        if hasattr(cls, name):
+            if isinstance(getattr(cls, name), (tuple, list)):
+                attrs.extend(getattr(cls, name))
+                setattr(cls, name, False)
+        else:
+            setattr(cls, name, False)
+        cls._permit_attrs_ = set(attrs)
+
+        for fld in flds:
+            if is_array(fld[1]):
+                array(fld[1])
+
+    cls.__setattr__ = _wrap_setattr(cls.__setattr__)
+    cls._property_ = _PropertyCacheDesc('_property_')
+    cls._top_base_ = property(_top_base)
+    cls.copy = copy
+    cls.dup = copy
+    cls.clear = clear
+    cls.dump = dump
+
 class _MetaStruct(type(ctypes.Structure)):
     def __new__(mcls, name, bases, dic):
-        _setup_array(dic)
-        return super(_MetaStruct, mcls).__new__(mcls, name, bases, dic)
+        cls = super(_MetaStruct, mcls).__new__(mcls, name, bases, dic)
+        _setup(cls)
+        return cls
 
     def __mul__(cls, val):
         newcls = super(_MetaStruct, cls).__mul__(val)
@@ -172,8 +189,9 @@ class _MetaStruct(type(ctypes.Structure)):
 
 class _MetaUnion(type(ctypes.Union)):
     def __new__(mcls, name, bases, dic):
-        _setup_array(dic)
-        return super(_MetaUnion, mcls).__new__(mcls, name, bases, dic)
+        cls = super(_MetaUnion, mcls).__new__(mcls, name, bases, dic)
+        _setup(cls)
+        return cls
 
     def __mul__(cls, val):
         newcls = super(_MetaUnion, cls).__mul__(val)
@@ -181,26 +199,12 @@ class _MetaUnion(type(ctypes.Union)):
 
 class Struct(ctypes.Structure):
     __metaclass__ = _MetaStruct
-    __setattr__ = _wrap_setattr(ctypes.Structure.__setattr__)
     def __iter__(self):
         return iter((getattr(self, mbr[0]) for mbr in self._fields_))
 
 class Union(ctypes.Union):
     __metaclass__ = _MetaUnion
-    __setattr__ = _wrap_setattr(ctypes.Union.__setattr__)
     # Union need no __iter__.
-
-for cls in [Struct, Union]:
-    s = '_permit_new_attr_'
-    if not hasattr(cls, s):
-        setattr(cls, s, False)
-    s = '_property_'
-    setattr(cls, s, _PropertyCacheDesc(s))
-    setattr(cls, '_top_base_', property(_top_base))
-    setattr(cls, 'copy', copy)
-    setattr(cls, 'dup', copy)
-    setattr(cls, 'clear', clear)
-    setattr(cls, 'dump', dump)
 
 __all__ = []
 
