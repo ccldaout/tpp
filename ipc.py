@@ -13,6 +13,10 @@ import tpp.toolbox as tb
 
 ___ = tb.no_except
 
+import __builtin__
+if 'memoryview' not in __builtin__.__dict__:
+    memoryview = lambda x:x		# for python 2.6
+
 #----------------------------------------------------------------------------
 #                          simple socket wrappter
 #----------------------------------------------------------------------------
