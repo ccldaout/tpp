@@ -9,10 +9,10 @@ class Service(object):
     def __init__(self):
         self._users = {}
 
-    def handle_ACCEPTED(self, cid__):
+    def on_connection(self, cid__):
         self._users[cid__] = ('*no name*', None)
 
-    def handle_DISCONNECTED(self, cid__):
+    def on_disconnection(self, cid__):
         name, _ = self._users[cid__]
         del self._users[cid__]
         self.notify_all('*server*', 'exit: %s' % name)

@@ -217,19 +217,19 @@ class ServiceBase(object):
     def __call__(self):
         return self
 
-    def link(self, port):
+    def link_port(self, port):
         if port not in self.__ports:
             self.__ports.append(port)
 
-    def unlink(self, port):
+    def unlink_port(self, port):
         if port in self.__ports:
             self.__ports.remove(port)
 
-    def sendall(self, msg):
+    def sendto_all(self, msg):
         for p in self.__ports[:]:
             p.send(msg)
 
-    def handle(self, port, msg):
+    def handle_message(self, port, msg):
         fn = 'handle_' + str(msg[0])
         if hasattr(self, fn):
             getattr(self, fn)(port, msg)
@@ -286,7 +286,7 @@ class IPCPort(object):
             self._send_loop()
         except:
             pass
-        self._service.unlink(self)
+        self._service.unlink_port(self)
         # [AD-HOC] try..except is to suppress error whene interpeter shutdown
         try:
             self._csock.shut_write()
@@ -298,7 +298,7 @@ class IPCPort(object):
         while True:
             try:
                 msg = self._packer.unpack(self._csock)
-                self._service.handle(self, msg)
+                self._service.handle_message(self, msg)
             except Exception as e:
                 if self._send_error:
                     e, msg = self._send_error
@@ -313,7 +313,7 @@ class IPCPort(object):
     def _main_thread(self, send_thread, fin_func):
         try:
             if self._csock.is_server:
-                self._service.link(self)
+                self._service.link_port(self)
                 self._service.handle_ACCEPTED(self)
             else:
                 self._service.handle_CONNECTED(self)

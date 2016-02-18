@@ -181,8 +181,8 @@ class _RpcServer(_RpcCommon):
     def __new__(cls, *args, **kwargs):
         self = super(_RpcServer, cls).__new__(cls)
         self._exports = []		# list of (frontend, name, doc)
-        self._cb_accepted = tb.Delegate()
-        self._cb_disconnected = tb.Delegate()
+        self._on_connection = tb.Delegate()
+        self._on_disconnection = tb.Delegate()
         self._cids = set([])
         return self
 
@@ -217,21 +217,21 @@ class _RpcServer(_RpcCommon):
         for k, v in inspect.getmembers(rpcitf):
             if k[0] != '_' and callable(v) and hasattr(v, _ATTR_EXPORT):
                 self._exports.append((cnv(v), v.__name__, v.__doc__))
-        if hasattr(rpcitf, 'handle_ACCEPTED'):
-            self._cb_accepted += rpcitf.handle_ACCEPTED
-        if hasattr(rpcitf, 'handle_DISCONNECTED'):
-            self._cb_disconnected += rpcitf.handle_DISCONNECTED
+        if hasattr(rpcitf, 'on_connection'):
+            self._on_connection += rpcitf.on_connection
+        if hasattr(rpcitf, 'on_disconnection'):
+            self._on_disconnection += rpcitf.on_disconnection
         return self
 
     def handle_ACCEPTED(self, port):
         port.send(['register', self._exports])
         self._cids.add(port.order)
-        self._cb_accepted(port.order)
+        self._on_connection(port.order)
 
     def handle_DISCONNECTED(self, port):
         if port.order in self._cids:
             self._cids.remove(port.order)
-            self._cb_disconnected(port.order)
+            self._on_disconnection(port.order)
 
     def handle_SOCKERROR(self, port):
         return self.handle_DISCONNECTED(port)

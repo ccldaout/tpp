@@ -15,7 +15,7 @@ class Service(ipc.ServiceBase):
         print 'greeted', port, msg[1]
         with self._lock:
             self._users[port] = msg[1]
-        self.sendall(['notify', '<server>', 'greeted', msg[1]])
+        self.sendto_all(['notify', '<server>', 'greeted', msg[1]])
 
     # ['say', string...]
     def handle_say(self, port, msg):
@@ -23,7 +23,7 @@ class Service(ipc.ServiceBase):
             name = self._users[port]
         except:
             name = 'x'
-        self.sendall(['notify', name, msg[1]])
+        self.sendto_all(['notify', name, msg[1]])
 
     # ['bye']
     def handle_bye(self, port, msg):
@@ -31,7 +31,7 @@ class Service(ipc.ServiceBase):
             name = self._users[port]
         except:
             name = 'x'
-        self.sendall(['notify', name, 'bye'])
+        self.sendto_all(['notify', name, 'bye'])
 
     def handle_ACCEPTED(self, port):
         print '*accepted*', port
