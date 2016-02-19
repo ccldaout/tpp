@@ -186,21 +186,27 @@ class fn(object):
 #----------------------------------------------------------------------------
 
 class OnetimeMsgBox(object):
-    _cond = threading.Condition()
-    _key = 0
-    _mbox = {}
+
+    def __new__(cls):
+        self = super(OnetimeMsgBox, cls).__new__(cls)
+        self._cond = threading.Condition()
+        self._key = 0
+        self._mbox = {}
+        return self
+
+    def __iter__(self):
+        return self._mbox.iteritems()
 
     def reserve(self, key = None):
         with self._cond:
-            cls = type(self)
             if key is None:
-                cls._key += 1
-                key = cls._key
+                self._key += 1
+                key = self._key
             else:
                 if key in self._mbox:
                     raise RuntimeError("Specified key '%s' is already used." % key)
-                if cls._key < key:
-                    cls._key = key
+                if self._key < key:
+                    self._key = key
             self._mbox[key] = None
             return key
     
