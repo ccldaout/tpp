@@ -61,9 +61,9 @@ class CSocket(object):
                 self.settimeout(ctmo_s)
                 self.connect(addr)
                 self.settimeout(None)
-        except:
+        except Exception as e:
             self.close()
-            raise
+            raise type(e), (str(e) + ': ' + str(addr),), sys.exc_info()[2]
         return self
 
     def close(self, *args):
