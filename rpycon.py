@@ -56,7 +56,7 @@ class _Console(code.InteractiveConsole):
         self._stdout.write('\n')
         return self.push(s)
 
-    def handle_DISCONNECTED(self, cid__):
+    def on_disconnection(self, cid__):
         self.detach(cid__)
 
 def server(addr, dic=None, background=True):
