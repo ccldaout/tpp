@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import sys
 import traceback
 from tpp import threadutil as tu
 
@@ -13,6 +14,7 @@ class TaskResult(object):
         self.task = terminated_task
         self.success = success
         self.result = result
+        self.traceback = None
         return self
 
     def __str__(self):
@@ -121,6 +123,7 @@ class _TaskAction(_TaskBase):
             self._result.result = result
         except Exception as e:
             self._result.result = e
+            self._result.traceback = sys.exc_info()[2]
         self._epilogue()
 
     def _start(self):
@@ -256,6 +259,22 @@ def All(*tasks):
 
 def Any(*tasks):
     return _TaskAny(*tasks)
+
+class bg(object):
+    def __new__(cls, func, *args, **kwargs):
+        self = super(bg, cls).__new__(cls)
+        self.__task = Action(func, *args, **kwargs).start()
+        return self
+
+    def __getattr__(self, name):
+        if name == 'result':
+            r = self.__task.result
+            if r.success:
+                self.__task = None
+                self.result = r.result
+                return self.result
+            raise r.result, None, r.traceback
+        return super(bg, self).__getattr__(name)
 
 #----------------------------------------------------------------------------
 #                   DAG (Directed Acylic Graph) type task

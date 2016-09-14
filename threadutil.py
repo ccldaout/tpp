@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import collections
 import threading
 import time
 import traceback
@@ -69,7 +70,7 @@ class Event(type(threading.Event())):
 class Queue(object):
     def __new__(cls, value_in_tmo = None, value_in_stopped = False):
         self = super(Queue, cls).__new__(cls)
-        self._list = []
+        self._list = collections.deque()
         self._cond = Condition()
         self._value_in_tmo = value_in_tmo
         self._value_in_stopped = value_in_stopped
@@ -89,9 +90,9 @@ class Queue(object):
             while not self._list:
                 if not self._cond.wait(tmo_s):
                     return self._value_in_tmo
-            data = self._list.pop(0)
+            data = self._list.popleft()
             if data is self._value_in_stopped:
-                self._list = [data]
+                self._list.appendleft(data)
             return data
 
     def stop(self, soon=False):
@@ -103,7 +104,7 @@ class Queue(object):
 
     def clear(self):
         with self._cond:
-            self._list = []
+            self._list.clear()
             self._stopped = False
 
 #-----------------------------------------------------------------------------
@@ -143,7 +144,7 @@ class ThreadPool(object):
             action, args, kwargs = self._que.get(self._c_tmo)
             if action is False:			# timeout
                 with self._lock:
-                    if self._c_cur > self._c_lwm:
+                    if self._c_cur - self._c_act > self._c_lwm:
                         self._c_cur -= 1
                         return
                 continue
@@ -162,6 +163,7 @@ class ThreadPool(object):
                 action(*args, **kwargs)
             except:
                 traceback.print_exc()
+            action = args = kwargs = None
             with self._lock:
                 self._c_act -= 1
 
@@ -206,7 +208,7 @@ class ThreadPool(object):
 #----------------------------------------------------------------------------
 #----------------------------------------------------------------------------
 
-threadpool = ThreadPool()
+threadpool = ThreadPool(thread_max=128, thread_lwm=8)
 threadpool.start()
 
 __all__ = []

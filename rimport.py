@@ -225,10 +225,10 @@ if __name__ == '__main__':
         exit(1)
     addr = sys.argv[1].split(':')
     addr[1] = int(addr[1])
-    if len(addr) == 3:
-        conf = sys.argv[2]
-    else:
+    if len(sys.argv) == 2:
         conf = '~/.tpp/rimport/server.json'
+    else:
+        conf = sys.argv[2]
     server(tuple(addr), conf)
 else:
     conf = '~/.tpp/rimport/client.json'

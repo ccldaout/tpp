@@ -29,7 +29,7 @@ def dump(self, printer=None):
                 _dump(ind+2, m[0], getattr(obj, m[0]), printer)
             printer('%*s}', ind, ' ')
         elif isinstance(obj, str):
-            printer('%*s%s: <%s>', ind, ' ', name, obj)
+            printer('%*s%s: <%s>', ind, ' ', name, obj.encode('string_escape'))
         elif hasattr(obj, '__len__'):
             for i in xrange(len(obj)):
                 if i == 0 or not _isallzero(obj[i]):

@@ -13,10 +13,6 @@ import tpp.toolbox as tb
 
 ___ = tb.no_except
 
-import __builtin__
-if 'memoryview' not in __builtin__.__dict__:
-    memoryview = lambda x:x		# for python 2.6
-
 #----------------------------------------------------------------------------
 #                          simple socket wrappter
 #----------------------------------------------------------------------------
@@ -126,14 +122,14 @@ class CSocket(object):
         # exception: socket.timeout, socket.error
         if size is None:
             size = len(buf)
-        buf = memoryview(buf)[:size]
+        buf = buffer(buf, 0, size)	# memoryview(buf)[:size]
         tmo_s = self.send_tmo_s
         while size > 0:
             if (tmo_s is not None) and (not self.wait_writable(tmo_s)):
                 raise socket.timeout('send timeout: %f' % tmo_s)
             n = self._sock.send(buf)
             size -= n
-            buf = buf[n:]
+            buf = buffer(buf, n)	# buf = buf[n:]
             tmo_s = self.send_tmo_s
 
     def shutdown(self, m):
@@ -268,24 +264,21 @@ class IPCPort(object):
         return '<IPCPort#%d>' % self.order
 
     def _send_loop(self):
-        while True:
-            msg = self._send_queue.get()
-            if msg is False:
-                return
-            try:
+        msg = None
+        try:
+            while True:
+                msg = self._send_queue.get()
+                if msg is False:
+                    return
                 s, n = self._packer.pack(msg)
                 self._csock.send_x(s, n)
-            except Exception as e:
-                traceback.print_exc()
-                self._send_error = (e, msg)
-                self._csock.shut_read()
-                return
+        except Exception as e:
+            traceback.print_exc()
+            self._send_error = (e, msg)
+            self._csock.shut_read()
 
     def _send_thread(self):
-        try:
-            self._send_loop()
-        except:
-            pass
+        self._send_loop()
         self._service.unlink_port(self)
         # [AD-HOC] try..except is to suppress error whene interpeter shutdown
         try:
@@ -295,20 +288,20 @@ class IPCPort(object):
             pass
 
     def _main_loop(self):
-        while True:
-            try:
+        try:
+            while True:
                 msg = self._packer.unpack(self._csock)
                 self._service.handle_message(self, msg)
-            except Exception as e:
-                if self._send_error:
-                    e, msg = self._send_error
-                    e.args = (e.args[0] + '\n' + str(msg)[:70],) + e.args[1:]
-                if isinstance(e, NoMoreData):
-                    self._service.handle_DISCONNECTED(self)
-                else:
-                    traceback.print_exception(type(e), e, sys.exc_traceback)
-                    self._service.handle_SOCKERROR(self)
-                return e
+        except Exception as e:
+            if self._send_error:
+                e, msg = self._send_error
+                e.args = (e.args[0] + '\n' + str(msg)[:70],) + e.args[1:]
+            if isinstance(e, NoMoreData):
+                self._service.handle_DISCONNECTED(self)
+            else:
+                traceback.print_exception(type(e), e, sys.exc_traceback)
+                self._service.handle_SOCKERROR(self)
+            return e
 
     def _main_thread(self, send_thread, fin_func):
         try:

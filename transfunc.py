@@ -17,21 +17,14 @@ _inhibit_builtins = set([
 _permit_builtins = set(__builtin__.__dict__.keys()) - _inhibit_builtins
 
 _permit_modules = set([
-    'datetime', 'collections', 'heapq', 'bisect', 'array', 'sets',
-    'numbers', 'math', 'cmath', 'decimal', 'fractions', 'random', 'itertools',
-    'functools', 'operator',  'hashlib','hmac','md5','sha', 'time', 'ctypes',])
+    'datetime', 'heapq', 'bisect', 'array', 'numbers', 'math', 'cmath',
+    'random', 'itertools', 'functools', 'operator', 'hashlib', 'time'])
 
 def _code_new(*args):
     return types.CodeType(*args)
 
 def _code_reduce(code):
     def code_iter(code):
-        # co_name: function name
-        # co_names: global names
-        # co_varnames: local names (started with argument names)
-        # co_freevars: free variable names (defined in inner function)
-        # co_cellvars: cell variable names (defined in outer function)
-
         # Order of attribute names in _code_attrs must be same as order of arguments
         # of types.CodeType constructor.
         _code_attrs = ('co_argcount', 'co_nlocals', 'co_stacksize', 'co_flags', 'co_code',

@@ -11,7 +11,7 @@ import time
 #----------------------------------------------------------------------------
 
 class _Printer(object):
-    __slots__ = ('print_name')
+    __slots__ = ('print_name',)
     _lock = threading.Lock()
 
     def __init__(self):
