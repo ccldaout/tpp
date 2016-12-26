@@ -55,6 +55,31 @@ def copy(self, trg=None):
 def clear(self):
     c_memset(c_addressof(self), 0, c_sizeof(self))
 
+def encode(self):
+    if isinstance(self, (str, int, long, float)):
+        return self
+    if hasattr(self, '__len__'):
+        return [encode(o) for o in self]
+    if hasattr(self, '_fields_'):
+        return dict(((fld[0], encode(getattr(self, fld[0]))) for fld in self._fields_))
+    raise Exception("%s cannot be encoded" % self)
+
+def decode(self, eobj):
+    if isinstance(eobj, list):
+        if isinstance(eobj[0], (list, dict)):
+            for idx, e in enumerate(eobj):
+                decode(self[idx], e)
+        else:
+            for idx, e in enumerate(eobj):
+                self[idx] = e
+    elif isinstance(eobj, dict):
+        for k, e in eobj.items():
+            if isinstance(e, (list, dict)):
+                decode(getattr(self, k), e)
+            else:
+                setattr(self, k, e)
+    return self
+
 # Suppress TypeError when assigninig a float value to int type.
 
 def _wrap_setattr(setattr_):
@@ -113,6 +138,8 @@ def array(ctype):
         ctype.dup = copy
         ctype.clear = clear
         ctype.dump = dump
+        ctype.encode = encode
+        ctype.decode = decode
         ctype2 = ctype
         ctype = ctype._type_
     if issubclass(ctype, (c_int, c_long, c_uint, c_ulong)):
@@ -176,6 +203,8 @@ def _setup(cls):
     cls.dup = copy
     cls.clear = clear
     cls.dump = dump
+    cls.encode = encode
+    cls.decode = decode
 
 class _MetaStruct(type(ctypes.Structure)):
     def __new__(mcls, name, bases, dic):
