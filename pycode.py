@@ -4,8 +4,13 @@ import dis
 import marshal
 import types
 
-def dis_code(c, upper):
-    upper = upper + '.' + c.co_name
+def dis_code(c, upper=None):
+    if isinstance(c, types.FunctionType):
+        c = c.__code__
+    if upper is None:
+        upper = c.co_name
+    else:
+        upper = upper + '.' + c.co_name
     for c2 in c.co_consts:
         if isinstance(c2, types.CodeType):
             dis_code(c2, upper)
