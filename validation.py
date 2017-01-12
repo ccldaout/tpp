@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 
 import functools
+from tpp.funcutil import prehook_wrapper
 
 #----------------------------------------------------------------------------
-#                           Defensive programming
+#
 #----------------------------------------------------------------------------
 
 def keywords(f):
@@ -27,6 +28,33 @@ def keywords(f):
     _f.__doc__ = 'keywords: %s%s' % (', '.join(make_sig()),
                                      '\n \n'+_f.__doc__ if _f.__doc__ else '')
     return _f
+
+#----------------------------------------------------------------------------
+#
+#----------------------------------------------------------------------------
+
+class ArgChecker(object):
+    def __init__(self, **keywords):
+        self._db = keywords
+    def __call__(self, *__args, **params):
+        for key, chk in self._db.iteritems():
+            if key in params:
+                val = params[key]
+                if not isinstance(val, chk[0]):
+                    raise TypeError('Parameter %s require %s, but assigned value %s is not.' %
+                                   (key, chk[0], val))
+                # chk: (int, (min, max))
+                #      (int, {val, val, ...})
+                #      (int, function)
+                #      (str, {kw:val, kw:val, ...})
+                #      (str, function)
+                # check val with chk
+
+def parameter(**kws):
+    def wrapper(f):
+        ac = ArgChecker(**kws)
+        return prehook_wrapper(f, ac)
+    return wrapper
 
 #----------------------------------------------------------------------------
 #----------------------------------------------------------------------------
