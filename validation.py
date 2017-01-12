@@ -1,14 +1,19 @@
 # -*- coding: utf-8 -*-
 
 import functools
+import os
 from tpp.funcutil import prehook_wrapper
+
+VALIDATION_DISABLE = (os.getenv('TPP_VALIDATION_DISABLE') is not None)
 
 #----------------------------------------------------------------------------
 #
 #----------------------------------------------------------------------------
 
-def keywords(f):
+def keyword(f):
     '''Enforce keyword parameter for optional argument'''
+    if VALIDATION_DISABLE:
+        return f
     c = f.__code__
     pac = c.co_argcount - len(f.__defaults__)
     fn = f.__name__
@@ -52,6 +57,8 @@ class ArgChecker(object):
 
 def parameter(**kws):
     def wrapper(f):
+        if VALIDATION_DISABLE:
+            return f
         ac = ArgChecker(**kws)
         return prehook_wrapper(f, ac)
     return wrapper
