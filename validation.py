@@ -38,28 +38,55 @@ def keyword(f):
 #
 #----------------------------------------------------------------------------
 
-class ArgChecker(object):
+class Check(object):
+    @keyword
+    def __init__(self, accepts=(), types=None, min=None, max=None, pred=None):
+        self._accepts = accepts if isinstance(accepts, (tuple, list, set, dict)) else (accepts,)
+        self._types = types
+        self._min = min
+        self._max = max
+        self._pred = pred
+
+    def __call__(self, key, val):
+        if val in self._accepts:
+            return
+        if (self._accepts and
+            self._types is None and self._min is None and
+            self._max is None and self._pred is None):
+            raise TypeError('Parameter %s must be one of %s' % (key, self._accepts))
+
+        if self._types:
+            if not isinstance(val, self._types):
+                raise TypeError('Parameter %s require %s, but assigned value %s is not.' %
+                                (key, self._types, val))
+        if self._min is not None:
+            if val < self._min:
+                raise TypeError('Assigned value %s for parameter %s is too small.' % (val, key))
+
+        if self._max is not None:
+            if val > self._max:
+                raise TypeError('Assigned value %s for parameter %s is too big.' % (val, key))
+
+        if self._pred is not None:
+            self._pred(key, val)
+
+class _ArgChecker(object):
     def __init__(self, **keywords):
+        for key, chk in keywords.items():
+            if not isinstance(chk, Check):
+                raise TypeError('Parameter of %s must be Check object.' % key)
         self._db = keywords
+
     def __call__(self, *__args, **params):
-        for key, chk in self._db.iteritems():
-            if key in params:
-                val = params[key]
-                if not isinstance(val, chk[0]):
-                    raise TypeError('Parameter %s require %s, but assigned value %s is not.' %
-                                   (key, chk[0], val))
-                # chk: (int, (min, max))
-                #      (int, {val, val, ...})
-                #      (int, function)
-                #      (str, {kw:val, kw:val, ...})
-                #      (str, function)
-                # check val with chk
+        for key, val in params.iteritems():
+            if key in self._db:
+                self._db[key](key, val)
 
 def parameter(**kws):
     def wrapper(f):
         if VALIDATION_DISABLE:
             return f
-        ac = ArgChecker(**kws)
+        ac = _ArgChecker(**kws)
         return prehook_wrapper(f, ac)
     return wrapper
 

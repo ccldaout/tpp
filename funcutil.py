@@ -40,11 +40,11 @@ def get_vns(aspec):
 
 def prehook_wrapper(f, prehook):
     aspec = inspect.getargspec(f)
-    
+
     f_name = f.__name__
     f_sig = ', '.join(get_sig(aspec))    
     f_kws = ', '.join(get_kws(aspec))     
-    
+
     vns = set(get_vns(aspec))
     pre_name = 'prehook'
     for _ in xrange(len(''.join(vns))):
@@ -63,7 +63,7 @@ def prehook_wrapper(f, prehook):
     pre_name, f_kws,
     f_name, f_kws,
     f_name)
-    
+
     dic = {}
     eval(compile(src, f.__module__, 'exec'), dic)
     _f = functools.wraps(f)(dic[m_name](f, prehook))
