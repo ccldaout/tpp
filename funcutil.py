@@ -79,6 +79,12 @@ def prehook_wrapper(f, prehook):
     _f = functools.wraps(f)(dic[m_name](f, prehook))
     return _f
 
+def prehook(hook):
+    '''decorator of prehook_wrapper'''
+    def _prehook(f):
+        return prehook_wrapper(f, hook)
+    return _prehook
+
 #----------------------------------------------------------------------------
 #----------------------------------------------------------------------------
 
