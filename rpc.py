@@ -4,6 +4,7 @@ import inspect
 from tpp import ipc
 from tpp import toolbox as tb
 from tpp import threadutil as tu
+from tpp import funcutil as fu
 
 ___ = tb.no_except
 
@@ -216,7 +217,10 @@ class _RpcServer(_RpcCommon):
         cnv = lambda v:_ProxyBackendManager.encode(None, v)
         for k, v in inspect.getmembers(rpcitf):
             if k[0] != '_' and callable(v) and hasattr(v, _ATTR_EXPORT):
-                self._exports.append((cnv(v), v.__name__, v.__doc__))
+                doc = 'Parameters: ' + ', '.join(fu.get_sig(inspect.getargspec(v)))
+                if v.__doc__:
+                    doc = '%s\n \n%s' % (doc, v.__doc__)
+                self._exports.append((cnv(v), v.__name__, doc))
         if hasattr(rpcitf, 'on_connection'):
             self._on_connection += rpcitf.on_connection
         if hasattr(rpcitf, 'on_disconnection'):
