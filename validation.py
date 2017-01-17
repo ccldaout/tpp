@@ -16,8 +16,13 @@ def keyword(f):
         return f
     c = f.__code__
     pac = c.co_argcount - len(f.__defaults__)
+    pv = c.co_varnames[:pac]
+    pa = ''.join([s+', ' for s in pv])
     fn = f.__name__
-    pa = ''.join([s+', ' for s in c.co_varnames[:pac]])
+    for _ in xrange(len(pv)):
+        if fn not in pv:
+            break
+        fn += '_'
 
     src = '''def make_wrapper(%s):
     def _%s(%s**keywords):
