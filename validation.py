@@ -45,35 +45,58 @@ def keyword(f):
 
 class Check(object):
     @keyword
-    def __init__(self, accepts=(), types=None, min=None, max=None, pred=None):
+    def __init__(self, accepts=(), types=None, min=None, max=None, pred=None, dim=0):
         self._accepts = accepts if isinstance(accepts, (tuple, list, set, dict)) else (accepts,)
         self._types = types
         self._min = min
         self._max = max
         self._pred = pred
+        if isinstance(dim, int):
+            self._dim = (None,) * dim
+        elif isinstance(dim, tuple):
+            self._dim = dim
+        else:
+            raise TypeError('dim parameter must be integer or tuple of integer')
 
-    def __call__(self, key, val):
+    def __call__(self, name, val):
+        if not self._dim:
+            self._check(name, val)
+        else:
+            def breakdown(dim, val):
+                n = dim[0]
+                if n is None:
+                    n = len(val)
+                if (len(dim) == 1):
+                    for i in xrange(n):
+                        self._check(name, val[i])
+                else:
+                    dim = dim[1:]
+                    for i in xrange(n):
+                        breakdown(dim, val[i])
+            breakdown(self._dim, val)
+
+    def _check(self, name, val):
         if val in self._accepts:
             return
         if (self._accepts and
             self._types is None and self._min is None and
             self._max is None and self._pred is None):
-            raise TypeError('Parameter %s must be one of %s' % (key, self._accepts))
+            raise TypeError('Parameter %s must be one of %s' % (name, self._accepts))
 
         if self._types:
             if not isinstance(val, self._types):
                 raise TypeError('Parameter %s require %s, but assigned value %s is not.' %
-                                (key, self._types, val))
+                                (name, self._types, val))
         if self._min is not None:
             if val < self._min:
-                raise TypeError('Assigned value %s for parameter %s is too small.' % (val, key))
+                raise TypeError('Assigned value %s for parameter %s is too small.' % (val, name))
 
         if self._max is not None:
             if val > self._max:
-                raise TypeError('Assigned value %s for parameter %s is too big.' % (val, key))
+                raise TypeError('Assigned value %s for parameter %s is too big.' % (val, name))
 
         if self._pred is not None:
-            self._pred(key, val)
+            self._pred(name, val)
 
 class _ArgChecker(object):
     def __init__(self, **keywords):
