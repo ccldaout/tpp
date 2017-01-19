@@ -4,7 +4,7 @@ import inspect
 import functools
 
 #----------------------------------------------------------------------------
-#                             wrapper generator
+#                       string operation of arguments
 #----------------------------------------------------------------------------
 
 class Arguments(object):
@@ -62,9 +62,35 @@ class Arguments(object):
         if self._keywords:
             yield self._keywords
 
+#----------------------------------------------------------------------------
+#                             symbol management
+#----------------------------------------------------------------------------
+
+class Symbols(object):
+    def __init__(self, names):
+        self._names = set(names)
+
+    def uniq(self, prefix):
+        while True:
+            if prefix not in self._names:
+                self._names.add(prefix)
+                return prefix
+            prefix += '_'
+
+#----------------------------------------------------------------------------
+#                             wrapper generator
+#----------------------------------------------------------------------------
+
+DEBUG = None
+
 def prehook_wrapper(f, prehook, as_dict=False):
     arg = Arguments(f)
+    syms = Symbols(arg.varnames)
 
+    m_name = 'maker'
+    f_name = syms.uniq(f.__name__)
+    g_name = syms.uniq('_' + f.__name__)
+    pre_name = syms.uniq('prehook')
     f_sig = arg.as_sig
     f_kws = arg.as_kws
     if as_dict:
@@ -72,30 +98,16 @@ def prehook_wrapper(f, prehook, as_dict=False):
     else:
         p_arg = f_kws
 
-    vns = set(arg.varnames)
-    pre_name = 'prehook'
-    for _ in xrange(len(''.join(vns))):
-        if pre_name not in vns:
-            break
-        pre_name += '_'
-
-    f_name = f.__name__
-    for _ in xrange(len(''.join(vns))):
-        if f_name not in vns:
-            break
-        f_name += '_'
-
-    m_name = 'maker'
     src = '''def %s(%s, %s):
-    def _%s(%s):
+    def %s(%s):
         %s(%s)
         return %s(%s)
-    return _%s''' % (
+    return %s''' % (
     m_name, f_name, pre_name,
-    f_name, f_sig,
+    g_name, f_sig,
     pre_name, p_arg,
     f_name, f_kws,
-    f_name)
+    g_name)
 
     dic = {}
     eval(compile(src, f.__module__, 'exec'), dic)

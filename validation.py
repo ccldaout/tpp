@@ -2,7 +2,7 @@
 
 import functools
 import os
-from tpp.funcutil import prehook_wrapper
+from tpp.funcutil import prehook_wrapper, Symbols
 
 VALIDATION_DISABLE = (os.getenv('TPP_VALIDATION_DISABLE') is not None)
 
@@ -14,20 +14,21 @@ def keyword(f):
     '''Enforce keyword parameter for optional argument'''
     if VALIDATION_DISABLE:
         return f
+
     c = f.__code__
     pac = c.co_argcount - len(f.__defaults__)
+
     pv = c.co_varnames[:pac]
+    syms = Symbols(pv)
+    fn = syms.uniq(f.__name__)
+    gn = syms.uniq('_' + f.__name__)
     pa = ''.join([s+', ' for s in pv])
-    fn = f.__name__
-    for _ in xrange(len(pv)):
-        if fn not in pv:
-            break
-        fn += '_'
+    kw = syms.uniq('keywords')
 
     src = '''def make_wrapper(%s):
-    def _%s(%s**keywords):
-        return %s(%s**keywords)
-    return _%s''' % (fn, fn, pa, fn, pa, fn)
+    def %s(%s**%s):
+        return %s(%s**%s)
+    return %s''' % (fn, gn, pa, kw, fn, pa, kw, gn)
     dic = {}
     eval(compile(src, f.__module__, 'exec'), dic)
     _f = functools.wraps(f)(dic['make_wrapper'](f))
