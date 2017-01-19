@@ -81,8 +81,6 @@ class Symbols(object):
 #                             wrapper generator
 #----------------------------------------------------------------------------
 
-DEBUG = None
-
 def prehook_wrapper(f, prehook, as_dict=False):
     arg = Arguments(f)
     syms = Symbols(arg.varnames)
