@@ -217,7 +217,7 @@ class _RpcServer(_RpcCommon):
         cnv = lambda v:_ProxyBackendManager.encode(None, v)
         for k, v in inspect.getmembers(rpcitf):
             if k[0] != '_' and callable(v) and hasattr(v, _ATTR_EXPORT):
-                doc = 'Parameters: ' + ', '.join(fu.get_sig(inspect.getargspec(v)))
+                doc = 'Parameters: ' + fu.Arguments(v).as_sig
                 if v.__doc__:
                     doc = '%s\n \n%s' % (doc, v.__doc__)
                 self._exports.append((cnv(v), v.__name__, doc))
