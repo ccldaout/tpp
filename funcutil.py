@@ -27,7 +27,7 @@ class Arguments(object):
                 yield '*' + self._varargs
             if self._keywords:
                 yield '**' + self._keywords
-        return ', '.join(_sig())    
+        return ', '.join(_sig())
 
     @property
     def as_kws(self):
@@ -39,7 +39,7 @@ class Arguments(object):
                 yield '*' + self._varargs
             if self._keywords:
                 yield '**' + self._keywords
-        return ', '.join(_kws())    
+        return ', '.join(_kws())
 
     @property
     def as_dic(self):
