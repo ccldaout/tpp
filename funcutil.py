@@ -7,49 +7,72 @@ import functools
 #                             wrapper generator
 #----------------------------------------------------------------------------
 
-def get_sig(aspec):
-    if aspec.defaults:
-        dc = len(aspec.defaults)
-        for a in aspec.args[:-dc]:
+class Arguments(object):
+    def __init__(self, f):
+        self._args, self._varargs, self._keywords, self._defaults = inspect.getargspec(f)
+
+    @property
+    def as_sig(self):
+        def _sig():
+            if self._defaults:
+                dc = len(self._defaults)
+                for a in self._args[:-dc]:
+                    yield a
+                for a, d in zip(self._args[-dc:], self._defaults):
+                    yield '%s=%s' % (a, repr(d))
+            else:
+                for a in self._args:
+                    yield a
+            if self._varargs:
+                yield '*' + self._varargs
+            if self._keywords:
+                yield '**' + self._keywords
+        return ', '.join(_sig())    
+
+    @property
+    def as_kws(self):
+        def _kws():
+            args=list(self._args)
+            for a in args:
+                yield '%s=%s' % (a, a)
+            if self._varargs:
+                yield '*' + self._varargs
+            if self._keywords:
+                yield '**' + self._keywords
+        return ', '.join(_kws())    
+
+    @property
+    def as_dic(self):
+        def _dic():
+            args=list(self._args)
+            if self._varargs:
+                args.append(self._varargs)
+            if self._keywords:
+                args.append(self._keywords)
+            for a in args:
+                yield '"%s":%s' % (a, a)
+        return ', '.join(_dic())
+
+    @property
+    def varnames(self):
+        for a in self._args:
             yield a
-        for a, d in zip(aspec.args[-dc:], aspec.defaults):
-            yield '%s=%s' % (a, repr(d))
+        if self._varargs:
+            yield self._varargs
+        if self._keywords:
+            yield self._keywords
+
+def prehook_wrapper(f, prehook, as_dict=False):
+    arg = Arguments(f)
+
+    f_sig = arg.as_sig
+    f_kws = arg.as_kws
+    if as_dict:
+        p_arg = '{%s}' % arg.as_dic
     else:
-        for a in aspec.args:
-            yield a
-    if aspec.varargs:
-        yield '*' + aspec.varargs
-    if aspec.keywords:
-        yield '**' + aspec.keywords
+        p_arg = f_kws
 
-def get_kws(aspec, rename_self=False):
-    args=list(aspec.args)
-    if rename_self and args and args[0] == 'self':
-        yield 'self_original=%s' % args[0]
-        args.pop(0)
-    for a in args:
-        yield '%s=%s' % (a, a)
-    if aspec.varargs:
-        yield '*' + aspec.varargs
-    if aspec.keywords:
-        yield '**' + aspec.keywords
-
-def get_vns(aspec):
-    for a in aspec.args:
-        yield a
-    if aspec.varargs:
-        yield aspec.varargs
-    if aspec.keywords:
-        yield aspec.keywords
-
-def prehook_wrapper(f, prehook):
-    aspec = inspect.getargspec(f)
-
-    f_sig = ', '.join(get_sig(aspec))    
-    f_kws = ', '.join(get_kws(aspec))     
-    f_kws2 = ', '.join(get_kws(aspec, rename_self=True))
-
-    vns = set(get_vns(aspec))
+    vns = set(arg.varnames)
     pre_name = 'prehook'
     for _ in xrange(len(''.join(vns))):
         if pre_name not in vns:
@@ -70,7 +93,7 @@ def prehook_wrapper(f, prehook):
     return _%s''' % (
     m_name, f_name, pre_name,
     f_name, f_sig,
-    pre_name, f_kws2,
+    pre_name, p_arg,
     f_name, f_kws,
     f_name)
 
@@ -79,10 +102,10 @@ def prehook_wrapper(f, prehook):
     _f = functools.wraps(f)(dic[m_name](f, prehook))
     return _f
 
-def prehook(hook):
+def prehook(hook, as_dict=False):
     '''decorator of prehook_wrapper'''
     def _prehook(f):
-        return prehook_wrapper(f, hook)
+        return prehook_wrapper(f, hook, as_dict)
     return _prehook
 
 #----------------------------------------------------------------------------

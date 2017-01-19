@@ -105,8 +105,8 @@ class _ArgChecker(object):
                 raise TypeError('Parameter of %s must be Check object.' % key)
         self._db = keywords
 
-    def __call__(self, *__args, **params):
-        for key, val in params.iteritems():
+    def __call__(self, argdic):
+        for key, val in argdic.iteritems():
             if key in self._db:
                 self._db[key](key, val)
 
@@ -115,7 +115,7 @@ def parameter(**kws):
         if VALIDATION_DISABLE:
             return f
         ac = _ArgChecker(**kws)
-        return prehook_wrapper(f, ac)
+        return prehook_wrapper(f, ac, as_dict=True)
     return wrapper
 
 #----------------------------------------------------------------------------
