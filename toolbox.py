@@ -10,6 +10,9 @@ import time
 #                              Small utilities
 #----------------------------------------------------------------------------
 
+def alignP2(_z, p2):
+    return ((_z | (p2-1)) + 1)
+
 class _Printer(object):
     __slots__ = ('print_name',)
     _lock = threading.Lock()
@@ -26,8 +29,15 @@ class _Printer(object):
 
 pr = _Printer()
 
-def alignP2(_z, p2):
-    return ((_z | (p2-1)) + 1)
+class no_abort(object):
+    def __enter__(self):
+        pass
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+        if exc_type is not None:
+            traceback.print_exc()
+        return True
+
+no_abort = no_abort()
 
 def no_except(func, ret_if_exc=None):
     def _f(*args, **kwargs):
@@ -239,6 +249,3 @@ class OnetimeMsgBox(object):
 #----------------------------------------------------------------------------
 
 __all__ = []
-
-if __name__ == '__main__':
-    pass
