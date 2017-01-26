@@ -46,13 +46,14 @@ def keyword(f):
 
 class Check(object):
     @keyword
-    def __init__(self, accepts=(), types=None, min=None, max=None, pred=None, normalizer=None, dim=0):
+    def __init__(self, accepts=(), types=None, min=None, max=None, pred=None, normalizer=None, dim=0, doc=''):
         self._accepts = accepts if isinstance(accepts, (tuple, list, set, dict)) else (accepts,)
         self._types = types
         self._min = min
         self._max = max
         self._pred = pred
         self._normalizer = normalizer if normalizer else lambda x:x
+        self._doc = doc
         if isinstance(dim, int):
             self._dim = (None,) * dim
         elif isinstance(dim, tuple):
@@ -103,15 +104,24 @@ class Check(object):
 
 class _ArgChecker(object):
     def __init__(self, **keywords):
+        self._check_all = None
+        self._db = {}
         for key, chk in keywords.items():
-            if not isinstance(chk, Check):
-                raise TypeError('Parameter of %s must be Check object.' % key)
-        self._db = keywords
+            if key == '_':
+                if not callable(chk):
+                    raise TypeError('Parameter of %s must be callable.' % key)
+                self._check_all = chk
+            else:
+                if not isinstance(chk, Check):
+                    raise TypeError('Parameter of %s must be Check object.' % key)
+                self._db[key] = chk
 
     def __call__(self, argdic):
         for key, val in argdic.iteritems():
             if key in self._db:
                 self._db[key](key, val)
+        if self._check_all:
+            self._check_all(argdic)
 
 def parameter(**kws):
     def wrapper(f):
