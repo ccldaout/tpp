@@ -46,12 +46,13 @@ def keyword(f):
 
 class Check(object):
     @keyword
-    def __init__(self, accepts=(), types=None, min=None, max=None, pred=None, dim=0):
+    def __init__(self, accepts=(), types=None, min=None, max=None, pred=None, normalizer=None, dim=0):
         self._accepts = accepts if isinstance(accepts, (tuple, list, set, dict)) else (accepts,)
         self._types = types
         self._min = min
         self._max = max
         self._pred = pred
+        self._normalizer = normalizer if normalizer else lambda x:x
         if isinstance(dim, int):
             self._dim = (None,) * dim
         elif isinstance(dim, tuple):
@@ -77,6 +78,7 @@ class Check(object):
             breakdown(self._dim, val)
 
     def _check(self, name, val):
+        val = self._normalizer(val)
         if val in self._accepts:
             return
         if (self._accepts and
