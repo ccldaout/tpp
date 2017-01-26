@@ -118,6 +118,3 @@ def handler(func):
     return _handler
 
 __all__ = []
-
-if __name__ == '__main__':
-    pass

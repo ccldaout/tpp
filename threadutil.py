@@ -212,6 +212,3 @@ threadpool = ThreadPool(thread_max=128, thread_lwm=8)
 threadpool.start()
 
 __all__ = []
-
-if __name__ == '__main__':
-    pass
