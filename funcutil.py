@@ -112,7 +112,7 @@ def prehook_wrapper(f, prehook, as_dict=False):
         g_name)
 
     dic = {}
-    eval(compile(src, f.__module__, 'exec'), dic)
+    eval(compile(src, '<@prehook_wrapper>', 'exec'), dic)
     _f = functools.wraps(f)(dic[m_name](f, prehook))
     return _f
 

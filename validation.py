@@ -30,7 +30,7 @@ def keyword(f):
         return %s(%s**%s)
     return %s''' % (fn, gn, pa, kw, fn, pa, kw, gn)
     dic = {}
-    eval(compile(src, f.__module__, 'exec'), dic)
+    eval(compile(src, '<@keyword>', 'exec'), dic)
     _f = functools.wraps(f)(dic['make_wrapper'](f))
 
     def make_sig():
