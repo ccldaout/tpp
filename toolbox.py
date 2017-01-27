@@ -153,6 +153,13 @@ class Bomb(object):
     def __iter__(self):
         raise self._exc
 
+class nameddict(dict):
+    def __getattribute__(self, name):
+        try:
+            return super(nameddict, self).__getattribute__('__getitem__')(name)
+        except:
+            return super(nameddict, self).__getattribute__(name)
+
 #----------------------------------------------------------------------------
 #
 #----------------------------------------------------------------------------
