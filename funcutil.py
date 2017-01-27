@@ -89,23 +89,28 @@ def prehook_wrapper(f, prehook, as_dict=False):
     f_name = syms.uniq(f.__name__)
     g_name = syms.uniq('_' + f.__name__)
     pre_name = syms.uniq('prehook')
+    d_name = syms.uniq('_ndict')
     f_sig = arg.as_sig
     f_kws = arg.as_kws
     if as_dict:
-        p_arg = '{%s}' % arg.as_dic
+        d_imp = '\n    from tpp.toolbox import nameddict as %s' % d_name
+        p_arg = '%s({%s})' % (d_name, arg.as_dic)
     else:
+        d_imp = ''
         p_arg = f_kws
 
-    src = '''def %s(%s, %s):
+    src = '''def %s(%s, %s):%s
     def %s(%s):
         %s(%s)
         return %s(%s)
     return %s''' % (
-    m_name, f_name, pre_name,
-    g_name, f_sig,
-    pre_name, p_arg,
-    f_name, f_kws,
-    g_name)
+        m_name, f_name, pre_name,
+        d_imp,
+        g_name, f_sig,
+        pre_name, p_arg,
+        f_name, f_kws,
+        g_name)
+    print src
 
     dic = {}
     eval(compile(src, f.__module__, 'exec'), dic)
