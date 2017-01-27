@@ -110,7 +110,6 @@ def prehook_wrapper(f, prehook, as_dict=False):
         pre_name, p_arg,
         f_name, f_kws,
         g_name)
-    print src
 
     dic = {}
     eval(compile(src, f.__module__, 'exec'), dic)
