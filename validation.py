@@ -45,21 +45,29 @@ def keyword(f):
 #----------------------------------------------------------------------------
 
 class Check(object):
+    __slots__ = tuple('_accepts_only:_accepts:_types:_min:_max:_inf:_sup:'
+                      '_pred:_normalizer:_dim:_doc'.split(':'))
+
     @keyword
-    def __init__(self, accepts=(), types=None, min=None, max=None, pred=None, normalizer=None, dim=0, doc=''):
+    def __init__(self, accepts=(), types=None, min=None, max=None, inf=None, sup=None,
+                 pred=None, normalizer=None, dim=0, doc=''):
         self._accepts = accepts if isinstance(accepts, (tuple, list, set, dict)) else (accepts,)
+        self._accepts_only = (self._accepts and
+                              all([_ is None for _ in [types, min, max, inf, sup, pred]]))
         self._types = types
         self._min = min
         self._max = max
+        self._inf = inf
+        self._sup = sup
         self._pred = pred
         self._normalizer = normalizer if normalizer else lambda x:x
-        self._doc = doc
         if isinstance(dim, int):
             self._dim = (None,) * dim
         elif isinstance(dim, tuple):
             self._dim = dim
         else:
             raise TypeError('dim parameter must be integer or tuple of integer')
+        self._doc = doc
 
     def __call__(self, name, val):
         if not self._dim:
@@ -80,11 +88,10 @@ class Check(object):
 
     def _check(self, name, val):
         val = self._normalizer(val)
+
         if val in self._accepts:
             return
-        if (self._accepts and
-            self._types is None and self._min is None and
-            self._max is None and self._pred is None):
+        if self._accepts_only:
             raise TypeError('Parameter %s must be one of %s' % (name, self._accepts))
 
         if self._types:
@@ -95,8 +102,16 @@ class Check(object):
             if val < self._min:
                 raise TypeError('Assigned value %s for parameter %s is too small.' % (val, name))
 
+        if self._inf is not None:
+            if val <= self._inf:
+                raise TypeError('Assigned value %s for parameter %s is too small.' % (val, name))
+
         if self._max is not None:
             if val > self._max:
+                raise TypeError('Assigned value %s for parameter %s is too big.' % (val, name))
+
+        if self._sup is not None:
+            if val >= self._sup:
                 raise TypeError('Assigned value %s for parameter %s is too big.' % (val, name))
 
         if self._pred is not None:
