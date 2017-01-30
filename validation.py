@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import functools
+import inspect
 import os
 from tpp.funcutil import prehook_wrapper, Symbols
 
@@ -86,6 +87,13 @@ class Check(object):
                         breakdown(dim, val[i])
             breakdown(self._dim, val)
 
+    @property
+    def _types_s(self):
+        s = repr(self._types).replace("<type '", '').replace("'>", '')
+        if isinstance(self._types, tuple):
+            s = s[1:-1]
+        return s
+
     def _check(self, name, val):
         val = self._normalizer(val)
 
@@ -97,7 +105,7 @@ class Check(object):
         if self._types:
             if not isinstance(val, self._types):
                 raise TypeError('Parameter %s require %s, but assigned value %s is not.' %
-                                (name, self._types, val))
+                                (name, self._types_s, val))
         if self._min is not None:
             if val < self._min:
                 raise TypeError('Assigned value %s for parameter %s is too small.' % (val, name))
@@ -116,6 +124,39 @@ class Check(object):
 
         if self._pred is not None:
             self._pred(name, val)
+
+    def doc(self, name, indent):
+        def _doc():
+            if self._accepts_only:
+                yield 'one of %s' % repr(self._accepts)
+            else:
+                if self._accepts:
+                    yield 'accept: %s' % repr(self._accepts)
+                if self._types:
+                    yield 'types: %s' % self._types_s
+                rl = ru = ''
+                if self._min:
+                    rl = '%s <=' % self._min
+                elif self._inf:
+                    rl = '%s <' % self._inf
+                if self._max:
+                    ru += '<= %s' % self._max
+                elif self._sup:
+                    ru += '< %s' % self._sup
+                if rl or ru:
+                    yield 'range: %s' % ' ... '.join((rl, ru))
+                if self._doc:
+                    yield self._doc
+        n_pref = ' ' * indent
+        name += ': '
+        if len(name) > indent:
+            yield name
+            pref = n_pref
+        else:
+            pref = name + ' '*(indent - len(name))
+        for s in _doc():
+            yield pref + s
+            pref = n_pref
 
 class _ArgChecker(object):
     def __init__(self, **keywords):
@@ -138,11 +179,30 @@ class _ArgChecker(object):
         if self._check_all:
             self._check_all(argdic)
 
+    def modify_doc(self, f):
+        indent = 8
+        def _doc():
+            args = inspect.getargspec(f).args
+            for a in args:
+                if a in self._db:
+                    chk = self._db[a]
+                    for s in chk.doc(a, indent):
+                        yield s
+            for key, chk in self._db.iteritems():
+                if key not in args:
+                    for s in chk.doc(key, indent):
+                        yield s
+            if f.__doc__:
+                yield ' '
+                yield f.__doc__
+        f.__doc__ = '\n'.join(_doc())
+
 def parameter(**kws):
     def wrapper(f):
         if VALIDATION_DISABLE:
             return f
         ac = _ArgChecker(**kws)
+        ac.modify_doc(f)
         return prehook_wrapper(f, ac, as_dict=True)
     return wrapper
 
