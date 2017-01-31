@@ -135,13 +135,13 @@ class Check(object):
                 if self._types:
                     yield 'types: %s' % self._types_s
                 rl = ru = ''
-                if self._min:
+                if self._min is not None:
                     rl = '%s <=' % self._min
-                elif self._inf:
+                elif self._inf is not None:
                     rl = '%s <' % self._inf
-                if self._max:
+                if self._max is not None:
                     ru += '<= %s' % self._max
-                elif self._sup:
+                elif self._sup is not None:
                     ru += '< %s' % self._sup
                 if rl or ru:
                     yield 'range: %s' % ' ... '.join((rl, ru))
