@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 
-import functools
 import inspect
 import os
-from tpp.funcutil import prehook_wrapper, Symbols
+from tpp import funcutil as _fu
 
 VALIDATION_DISABLE = (os.getenv('TPP_VALIDATION_DISABLE') is not None)
 
@@ -11,34 +10,77 @@ VALIDATION_DISABLE = (os.getenv('TPP_VALIDATION_DISABLE') is not None)
 #
 #----------------------------------------------------------------------------
 
-def keyword(f):
-    '''Enforce keyword parameter for optional argument'''
+def _enforce_keyword(f, strict=False):
     if VALIDATION_DISABLE:
         return f
 
-    c = f.__code__
-    pac = c.co_argcount - len(f.__defaults__)
+    arg = _fu.Arguments(f)
+    if arg.varargs:
+        raise TypeError('enforce_keyword cannot decorate a function having *varargs')
+    if not arg.defaults:
+        raise TypeError('enforce_keyword cannot decorate a function having no default arguments.')
 
-    pv = c.co_varnames[:pac]
-    syms = Symbols(pv)
-    fn = syms.uniq(f.__name__)
-    gn = syms.uniq('_' + f.__name__)
-    pa = ''.join([s+', ' for s in pv])
-    kw = syms.uniq('keywords')
+    sig = arg.optional_as_sig
+    if strict:
+        pv = ()
+        if arg.mandatory_args:
+            sig = arg.mandatory_as_sig + ', ' + sig
+            if arg.mandatory_args[0] == 'self':
+                pv = ('self',)
+                sig = sig[len('self, '):]
+    else:
+        pv = arg.mandatory_args
+    syms = _fu.Symbols(pv)
+    f_name = syms.uniq(f.__name__)
+    g_name = syms.uniq('_' + f.__name__)
+    p_arg = ''.join([s+', ' for s in pv])
+    k_name = syms.uniq('keywords')
 
-    src = '''def make_wrapper(%s):
-    def %s(%s**%s):
-        return %s(%s**%s)
-    return %s''' % (fn, gn, pa, kw, fn, pa, kw, gn)
-    dic = {}
-    eval(compile(src, '<@keyword>', 'exec'), dic)
-    _f = functools.wraps(f)(dic['make_wrapper'](f))
+    src = '''def %s(%s**%s):
+    return %s(%s**%s)''' % (g_name, p_arg, k_name,
+                            f_name, p_arg, k_name)
+    wrapper = _fu.gen_func(g_name, src, {f_name:f})
 
-    def make_sig():
-        for i, v in enumerate(c.co_varnames[pac:c.co_argcount]):
-            yield '%s=%s' % (v, repr(f.__defaults__[i]))
-    _f.__doc__ = 'keywords: %s%s' % (', '.join(make_sig()),
-                                     '\n \n'+_f.__doc__ if _f.__doc__ else '')
+    sig_doc = '%s: %s' % (k_name, sig)
+    if arg.keywords:
+        sig_doc += ', key=value, ...'
+    return _fu.wrap(f, sig_doc)(wrapper)
+
+def strict_keyword(f):
+    return _enforce_keyword(f, strict=True)
+
+def enforce_keyword(f):
+    return _enforce_keyword(f, strict=False)
+
+keyword = enforce_keyword	# for compatibility
+
+def check_keywords(assigned_kws, defined_kws, args=()):
+    kws = {}
+    for k, v in defined_kws.iteritems():
+        kws[k] = assigned_kws.pop(k, v)
+    for k, v in assigned_kws.items():
+        if k in args:
+            kws[k] = v
+            assigned_kws.pop(k)
+    if assigned_kws:
+        raise TypeError('assigned keywords has unrecognized key(s): %s' % assigned_kws.keys())
+    return kws
+
+def define_keywords(**defined_kws):
+    def _f(f):
+        a = _fu.Arguments(f)
+        if a.defaults:
+            raise TypeError('define_keywords cannot decorate a function having a default argument.')
+        if not a.keywords:
+            raise TypeError('define_keywords cannot decorate a function having no keywords')
+            pass
+        kwsig = ', '.join(('%s=%s' % (k, repr(v)) for k, v in defined_kws.iteritems()))
+        sig_doc = '*args: %s\n**kws: %s' % (a.mandatory_as_sig, kwsig)
+        @_fu.wrap(f, sig_doc)
+        def __f(*args, **kws):
+            kws = check_keywords(kws, defined_kws, a.args)
+            return f(*args, **kws)
+        return __f
     return _f
 
 #----------------------------------------------------------------------------
@@ -140,13 +182,13 @@ class Check(object):
                 elif self._inf is not None:
                     rl = '%s <' % self._inf
                 if self._max is not None:
-                    ru += '<= %s' % self._max
+                    ru = '<= %s' % self._max
                 elif self._sup is not None:
-                    ru += '< %s' % self._sup
+                    ru = '< %s' % self._sup
                 if rl or ru:
                     yield 'range: %s' % ' ... '.join((rl, ru))
                 if self._doc:
-                    yield self._doc
+                    yield '- %s -' % self._doc
         n_pref = ' ' * indent
         name += ': '
         if len(name) > indent:
@@ -172,7 +214,7 @@ class _ArgChecker(object):
                     raise TypeError('Parameter of %s must be Check object.' % key)
                 self._db[key] = chk
 
-    def __call__(self, argdic):
+    def __call__(self, argdef, argdic):
         for key, val in argdic.iteritems():
             if key in self._db:
                 self._db[key](key, val)
@@ -203,7 +245,7 @@ def parameter(**kws):
             return f
         ac = _ArgChecker(**kws)
         ac.modify_doc(f)
-        return prehook_wrapper(f, ac, as_dict=True)
+        return _fu.prehook_wrapper(f, ac)
     return wrapper
 
 #----------------------------------------------------------------------------

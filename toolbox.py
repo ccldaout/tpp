@@ -30,11 +30,24 @@ class _Printer(object):
 pr = _Printer()
 
 class no_abort(object):
+    def __init__(self):
+        self._exc_simple = True
+        self._exc_expect = 'Exception'
+    def __call__(self, exc_simple=True, expect='Exception'):
+        self._exc_simple = exc_simple
+        self._exc_expect = expect
+        return self
     def __enter__(self):
         pass
     def __exit__(self, exc_type, exc_value, exc_traceback):
+        print '<<< expect:', self._exc_expect
         if exc_type is not None:
-            traceback.print_exc()
+            if self._exc_simple:
+                print '>>> %s: %s' % (exc_type.__name__, exc_value)
+            else:
+                traceback.print_exc()
+        else:
+            print '>>> no error'
         return True
 
 no_abort = no_abort()
