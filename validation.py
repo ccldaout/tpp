@@ -7,7 +7,7 @@ from tpp import funcutil as _fu
 VALIDATION_DISABLE = (os.getenv('TPP_VALIDATION_DISABLE') is not None)
 
 #----------------------------------------------------------------------------
-#
+#            Keyword enforcing way 1 - replace k=v, ... to **kws
 #----------------------------------------------------------------------------
 
 def _enforce_keyword(f, strict=False):
@@ -54,6 +54,60 @@ def enforce_keyword(f):
 
 keyword = enforce_keyword	# for compatibility
 
+#----------------------------------------------------------------------------
+#             Keyword enforcing way 2 - insert special argument
+#----------------------------------------------------------------------------
+
+def enforce_keyword_alt(f):
+    if VALIDATION_DISABLE:
+        return f
+
+    arg = _fu.Arguments(f)
+    if arg.varargs:
+        raise TypeError('cannot decorate a function having *varargs')
+    if not arg.defaults:
+        raise TypeError('cannot decorate a function having no default arguments')
+
+    syms = _fu.Symbols(arg.varnames)
+    f_name = syms.uniq(f.__name__)
+    w_name = syms.uniq('_' + f.__name__)
+    c_name = syms.uniq('_')
+    c_d_name = syms.uniq('_')
+    c_default = type('', (object,), {'__repr__':lambda s:'None',
+                                     '__str__':lambda s:'None',
+                                     '__slots__':('__repr__', '__str__')})()
+    if arg.mandatory_args:
+        p_sig = arg.mandatory_as_sig + ', '
+    else:
+        p_sig = ''
+    o_sig = arg.optional_as_sig
+    if arg.keywords:
+        k_sig = ', **' + arg.keywords
+    else:
+        k_sig = ''
+    src = '''def %s(%s%s=%s, %s%s):
+        if %s is not %s:
+            raise TypeError('Too many positional argument(s)')
+        return %s(%s)''' % (w_name, p_sig, c_name, c_d_name, o_sig, k_sig,
+                                                 c_name, c_d_name,
+                                                 f_name, arg.as_arg)
+    wrapper = _fu.gen_func(w_name, src, {f_name:f, c_d_name:c_default})
+
+    c = wrapper.__code__
+    n = len(arg.mandatory_args)
+    new_co_varnames = c.co_varnames[:n] + ('*',) + c.co_varnames[n+1:]
+    wrapper.__code__ = type(c)(c.co_argcount, c.co_nlocals, c.co_stacksize, c.co_flags,
+                               c.co_code, c.co_consts, c.co_names,
+                               new_co_varnames,
+                               c.co_filename, c.co_name, c.co_firstlineno,
+                               c.co_lnotab, c.co_freevars, c.co_cellvars)
+
+    return _fu.wrap(f, sig_doc=None)(wrapper)
+
+#----------------------------------------------------------------------------
+#               Keyword enforcing way 3 - manual description
+#----------------------------------------------------------------------------
+
 def check_keywords(assigned_kws, defined_kws, args=()):
     kws = {}
     for k, v in defined_kws.iteritems():
@@ -84,7 +138,7 @@ def define_keywords(**defined_kws):
     return _f
 
 #----------------------------------------------------------------------------
-#
+#                    Unified parameter verification tool
 #----------------------------------------------------------------------------
 
 class Check(object):
