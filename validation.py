@@ -89,8 +89,8 @@ def enforce_keyword_alt(f):
         if %s is not %s:
             raise TypeError('Too many positional argument(s)')
         return %s(%s)''' % (w_name, p_sig, c_name, c_d_name, o_sig, k_sig,
-                                                 c_name, c_d_name,
-                                                 f_name, arg.as_arg)
+                            c_name, c_d_name,
+                            f_name, arg.as_arg)
     wrapper = _fu.gen_func(w_name, src, {f_name:f, c_d_name:c_default})
 
     c = wrapper.__code__
