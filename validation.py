@@ -73,9 +73,9 @@ def enforce_keyword_alt(f):
     w_name = syms.uniq('_' + f.__name__)
     c_name = syms.uniq('_')
     c_d_name = syms.uniq('_')
-    c_default = type('', (object,), {'__repr__':lambda s:'None',
-                                     '__str__':lambda s:'None',
-                                     '__slots__':('__repr__', '__str__')})()
+    c_default = type('', (object,), {'__repr__':lambda s:'',
+                                     '__str__':lambda s:'',
+                                     '__slots__':()})()
     if arg.mandatory_args:
         p_sig = arg.mandatory_as_sig + ', '
     else:
@@ -95,7 +95,7 @@ def enforce_keyword_alt(f):
 
     c = wrapper.__code__
     n = len(arg.mandatory_args)
-    new_co_varnames = c.co_varnames[:n] + ('*',) + c.co_varnames[n+1:]
+    new_co_varnames = c.co_varnames[:n] + ('=',) + c.co_varnames[n+1:]
     wrapper.__code__ = type(c)(c.co_argcount, c.co_nlocals, c.co_stacksize, c.co_flags,
                                c.co_code, c.co_consts, c.co_names,
                                new_co_varnames,
