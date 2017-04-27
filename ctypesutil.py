@@ -76,6 +76,32 @@ def decode(self, eobj):
                 setattr(self, k, e)
     return self
 
+def __repr__(self):
+    def walk(co):
+        hn = 4
+        ct = type(co)
+        yield ct.__name__ + '('
+        sep = ''
+        for fld in ct._fields_[:hn]:
+            v = getattr(co, fld[0])
+            if isinstance(v, (int, long, float, basestring)):
+                yield '%s%s:%s' % (sep, fld[0], repr(v))
+            else:
+                yield '%s%s' % (sep, fld[0])
+            sep = ', '
+        if len(ct._fields_) > hn:
+            yield ', ...'
+        yield ')'
+    return ''.join(walk(self))
+
+def __repr__array(self):
+    def parts(self):
+        n, ds = _ctypes_analyze(type(self))
+        yield n.__name__
+        for d in ds:
+            yield '[%d]' % d
+    return ''.join(parts(self))
+
 # Suppress TypeError when assigninig a float value to int type.
 
 def _wrap_setattr(setattr_):
@@ -136,6 +162,7 @@ def array(ctype):
         ctype.dump = dump
         ctype.encode = encode
         ctype.decode = decode
+        ctype.__repr__ = __repr__array
         ctype2 = ctype
         ctype = ctype._type_
     if issubclass(ctype, (c_int, c_long, c_uint, c_ulong)):
@@ -201,6 +228,7 @@ def _setup(cls):
     cls.dump = dump
     cls.encode = encode
     cls.decode = decode
+    cls.__repr__ = __repr__
 
 class _MetaStruct(type(ctypes.Structure)):
     def __new__(mcls, name, bases, dic):
