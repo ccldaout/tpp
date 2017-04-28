@@ -188,6 +188,7 @@ def _setup(cls):
         flds = cls._fields_
 
         attrs = [f[0] for f in flds]
+
         name = '_permit_new_attr_'
         if hasattr(cls, name):
             if isinstance(getattr(cls, name), (tuple, list)):
@@ -195,7 +196,11 @@ def _setup(cls):
                 setattr(cls, name, False)
         else:
             setattr(cls, name, False)
-        cls._permit_attrs_ = set(attrs)
+
+        name = '_permit_attrs_'
+        if hasattr(cls, name):
+            attrs.extend(getattr(cls, name))
+        setattr(cls, name, set(attrs))
 
         for fld in flds:
             if is_array(fld[1]):
@@ -270,15 +275,20 @@ class Struct(ctypes.Structure):
 
 class Union(ctypes.Union):
     __metaclass__ = _MetaUnion
-    # Union need no __iter__.
+    _permit_attrs_ = {'_assigned_mbr_'}
+
+    def __setattr__(self, mbr, val):
+        super(Union, self).__setattr__('_assigned_mbr_', mbr)
+        return super(Union, self).__setattr__(mbr, val)
+
+    def __repr__(self):
+        mbr = self._fields_[0][0]
+        if hasattr(self, '_assigned_mbr_'):
+            mbr = self._assigned_mbr_
+        return '%s(%s:%s)' % (type(self).__name__, mbr, repr(getattr(self, mbr)))
 
 __all__ = []
 
 if __name__ == '__main__':
-    class Vec(Struct):
-        _fields_ = [('x', c_int), ('y', c_int), ('z', c_float)]
-    Vec_3_A = Vec*3
-    Vec_2_4_A = Vec*2*4
-    v1 = Vec(1, 2, 3)
-    v2 = Vec_3_A()
-    v3 = Vec_2_4_A()
+    pass
+
