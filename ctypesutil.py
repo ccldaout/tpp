@@ -2,6 +2,21 @@
 
 from tpp.ctypessyms import *
 
+# additional functions
+
+def is_array(ctype):
+    return issubclass(ctype, ctypes.Array)
+
+def analyze_ctypes(ctype):
+    cdata = ctypes.Structure.__base__
+    ds = []
+    if not issubclass(ctype, cdata):
+        return None
+    while hasattr(ctype, '_length_'):
+        ds.append(getattr(ctype, '_length_'))
+        ctype = getattr(ctype, '_type_')
+    return (ctype, ds)
+
 # addtional methods
 
 def dump(self, printer=None):
@@ -76,32 +91,6 @@ def decode(self, eobj):
                 setattr(self, k, e)
     return self
 
-def __repr__(self):
-    def walk(co):
-        hn = 4
-        ct = type(co)
-        yield ct.__name__ + '('
-        sep = ''
-        for fld in ct._fields_[:hn]:
-            v = getattr(co, fld[0])
-            if isinstance(v, (int, long, float, basestring)):
-                yield '%s%s:%s' % (sep, fld[0], repr(v))
-            else:
-                yield '%s%s' % (sep, fld[0])
-            sep = ', '
-        if len(ct._fields_) > hn:
-            yield ', ...'
-        yield ')'
-    return ''.join(walk(self))
-
-def __repr__array(self):
-    def parts(self):
-        n, ds = _ctypes_analyze(type(self))
-        yield n.__name__
-        for d in ds:
-            yield '[%d]' % d
-    return ''.join(parts(self))
-
 # Suppress TypeError when assigninig a float value to int type.
 
 def _wrap_setattr(setattr_):
@@ -124,21 +113,6 @@ def _wrap_setitem(setitem_):
 
 # Enable a ctypes array to be cPickled.
 
-_c_array = (c_int*2).__bases__[0]
-
-def is_array(ctype):
-    return issubclass(ctype, _c_array)
-
-def _ctypes_analyze(ctype):
-    cdata = ctypes.Structure.__base__
-    ds = []
-    if not issubclass(ctype, cdata):
-        return None
-    while hasattr(ctype, '_length_'):
-        ds.append(getattr(ctype, '_length_'))
-        ctype = getattr(ctype, '_type_')
-    return (ctype, ds)
-
 def _array_unpickle((ctype, ds), bs):
     for n in reversed(ds):
         ctype *= n
@@ -146,13 +120,21 @@ def _array_unpickle((ctype, ds), bs):
 
 def _array_reduce(self):
     return (_array_unpickle,
-            (_ctypes_analyze(type(self)),
+            (analyze_ctypes(type(self)),
              bytearray(c_string_at(c_addressof(self), c_sizeof(self)))),
             )
 
 # Extender for ctypes array.
 
 def array(ctype):
+    def __repr__(self):
+        def parts(self):
+            n, ds = analyze_ctypes(type(self))
+            yield n.__name__
+            for d in ds:
+                yield '[%d]' % d
+        return ''.join(parts(self))
+
     orgctype = ctype
     while hasattr(ctype, '_length_'):
         ctype.__reduce__ = _array_reduce
@@ -162,7 +144,7 @@ def array(ctype):
         ctype.dump = dump
         ctype.encode = encode
         ctype.decode = decode
-        ctype.__repr__ = __repr__array
+        ctype.__repr__ = __repr__
         ctype2 = ctype
         ctype = ctype._type_
     if issubclass(ctype, (c_int, c_long, c_uint, c_ulong)):
@@ -228,7 +210,15 @@ def _setup(cls):
     cls.dump = dump
     cls.encode = encode
     cls.decode = decode
-    cls.__repr__ = __repr__
+
+class _MetaArray(type(ctypes.Array)):
+    def __new__(mcls, name, bases, dic):
+        cls = super(_MetaArray, mcls).__new__(mcls, name, bases, dic)
+        return array(cls)
+
+    def __mul__(cls, val):
+        newcls = super(_MetaArray, cls).__mul__(val)
+        return array(newcls)
 
 class _MetaStruct(type(ctypes.Structure)):
     def __new__(mcls, name, bases, dic):
@@ -237,8 +227,10 @@ class _MetaStruct(type(ctypes.Structure)):
         return cls
 
     def __mul__(cls, val):
-        newcls = super(_MetaStruct, cls).__mul__(val)
-        return array(newcls)
+        return _MetaArray('%s_Array_%d' % (cls.__name__, val),
+                          (ctypes.Array,),
+                          {'_length_':val,
+                           '_type_':cls})
 
 class _MetaUnion(type(ctypes.Union)):
     def __new__(mcls, name, bases, dic):
@@ -247,16 +239,46 @@ class _MetaUnion(type(ctypes.Union)):
         return cls
 
     def __mul__(cls, val):
-        newcls = super(_MetaUnion, cls).__mul__(val)
-        return array(newcls)
+        return _MetaArray('%s_Array_%d' % (cls.__name__, val),
+                          (ctypes.Array,),
+                          {'_length_':val,
+                           '_type_':cls})
 
 class Struct(ctypes.Structure):
     __metaclass__ = _MetaStruct
+
     def __iter__(self):
         return iter((getattr(self, mbr[0]) for mbr in self._fields_))
+
+    def __repr__(self):
+        def walk(co):
+            hn = 4
+            ct = type(co)
+            yield ct.__name__ + '('
+            sep = ''
+            for fld in ct._fields_[:hn]:
+                v = getattr(co, fld[0])
+                if isinstance(v, (int, long, float, basestring)):
+                    yield '%s%s:%s' % (sep, fld[0], repr(v))
+                else:
+                    yield '%s%s' % (sep, fld[0])
+                sep = ', '
+            if len(ct._fields_) > hn:
+                yield ', ...'
+            yield ')'
+        return ''.join(walk(self))
 
 class Union(ctypes.Union):
     __metaclass__ = _MetaUnion
     # Union need no __iter__.
 
 __all__ = []
+
+if __name__ == '__main__':
+    class Vec(Struct):
+        _fields_ = [('x', c_int), ('y', c_int), ('z', c_float)]
+    Vec_3_A = Vec*3
+    Vec_2_4_A = Vec*2*4
+    v1 = Vec(1, 2, 3)
+    v2 = Vec_3_A()
+    v3 = Vec_2_4_A()
