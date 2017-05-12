@@ -234,22 +234,6 @@ class ThreadPool(object):
 #----------------------------------------------------------------------------
 #----------------------------------------------------------------------------
 
-def _setup_monitor():
-    import atexit
-    class _Monitor(object):
-        pass
-    m = _Monitor()
-    m.alive = True
-    @atexit.register
-    def _clear_alive():
-        m.alive = None
-    return m
-
-monitor = _setup_monitor()
-
-#----------------------------------------------------------------------------
-#----------------------------------------------------------------------------
-
 threadpool = ThreadPool(thread_max=128, thread_lwm=8)
 threadpool.start()
 
