@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import collections
+import functools
 import threading
 import time
 import traceback
@@ -25,6 +26,19 @@ def test_cancel(cleaner=None):
             cleaner()
         raise Canceled()
 
+def _setup_monitor():
+    import atexit
+    class _Monitor(object):
+        pass
+    m = _Monitor()
+    m.alive = True
+    @atexit.register
+    def _clear_alive():
+        m.alive = None
+    return m
+
+monitor = _setup_monitor()
+
 def Thread(**kwargs):
     def join_wrapper(thr, orgjoin):
         def join(timeout=None):
@@ -35,6 +49,18 @@ def Thread(**kwargs):
                     break
             return not thr.is_alive()
         return join
+
+    target = kwargs['target']
+    @functools.wraps(target)
+    def wrapped_target(*args, **kws):
+        m = monitor
+        try:
+            return target(*args, **kws)
+        except:
+            if m and m.alive:
+                raise
+
+    kwargs['target'] = wrapped_target
     t = threading.Thread(**kwargs)
     t.join = join_wrapper(t, t.join)
     t._canceling = threading.Event()
@@ -204,6 +230,22 @@ class ThreadPool(object):
 
     def wait(self):
         self._no_worker.wait()
+
+#----------------------------------------------------------------------------
+#----------------------------------------------------------------------------
+
+def _setup_monitor():
+    import atexit
+    class _Monitor(object):
+        pass
+    m = _Monitor()
+    m.alive = True
+    @atexit.register
+    def _clear_alive():
+        m.alive = None
+    return m
+
+monitor = _setup_monitor()
 
 #----------------------------------------------------------------------------
 #----------------------------------------------------------------------------

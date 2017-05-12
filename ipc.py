@@ -280,12 +280,8 @@ class IPCPort(object):
     def _send_thread(self):
         self._send_loop()
         self._service.unlink_port(self)
-        # [AD-HOC] try..except is to suppress error whene interpeter shutdown
-        try:
-            self._csock.shut_write()
-            self._send_queue.stop(soon=True)
-        except:
-            pass
+        self._csock.shut_write()
+        self._send_queue.stop(soon=True)
 
     def _main_loop(self):
         try:
