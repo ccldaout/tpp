@@ -26,7 +26,7 @@ def test_cancel(cleaner=None):
             cleaner()
         raise Canceled()
 
-def _setup_monitor():
+def _monitor_interpreter():
     import atexit
     class _Monitor(object):
         pass
@@ -37,10 +37,10 @@ def _setup_monitor():
         m.alive = None
     return m
 
-monitor = _setup_monitor()
+interpreter = _monitor_interpreter()
 
 def Thread(**kwargs):
-    def join_wrapper(thr, orgjoin):
+    def wrap_join(thr, orgjoin):
         def join(timeout=None):
             tmo_s = timeout if timeout else _tmo_s
             while thr.is_alive():
@@ -52,17 +52,17 @@ def Thread(**kwargs):
 
     target = kwargs['target']
     @functools.wraps(target)
-    def wrapped_target(*args, **kws):
-        m = monitor
+    def outer_target(*args, **kws):
+        m = interpreter
         try:
             return target(*args, **kws)
         except:
             if m and m.alive:
                 raise
+    kwargs['target'] = outer_target
 
-    kwargs['target'] = wrapped_target
     t = threading.Thread(**kwargs)
-    t.join = join_wrapper(t, t.join)
+    t.join = wrap_join(t, t.join)
     t._canceling = threading.Event()
     t.cancel = (lambda thr: lambda: thr._canceling.set())(t)
     t.clear_cancel = (lambda thr: lambda: thr._canceling.clear())(t)
