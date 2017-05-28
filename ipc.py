@@ -225,7 +225,7 @@ class ServiceBase(object):
         for p in self.__ports[:]:
             p.send(msg)
 
-    def handle_message(self, port, msg):
+    def call_handler(self, port, msg):
         fn = 'handle_' + str(msg[0])
         if hasattr(self, fn):
             getattr(self, fn)(port, msg)
@@ -287,7 +287,7 @@ class IPCPort(object):
         try:
             while True:
                 msg = self._packer.unpack(self._csock)
-                self._service.handle_message(self, msg)
+                self._service.call_handler(self, msg)
         except Exception as e:
             if self._send_error:
                 e, msg = self._send_error
