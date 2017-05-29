@@ -83,7 +83,7 @@ class _ClientService(_ServiceBase):
 
     def send(self, *args):
         self.log(1, self.__port.order, args)
-        self.__port.send(args)
+        self.__port.send(list(args))
 
 class _ServerService(_ServiceBase):
 
@@ -108,7 +108,7 @@ class _ServerService(_ServiceBase):
         if port_order not in self.__ports:
             raise KeyError('Invalid port_order argument: %s', port_order)
         self.log(1, port_order, args)
-        self.__ports[port_order].send(args)
+        self.__ports[port_order].send(list(args))
 
 class _InteractiveBase(object):
 
