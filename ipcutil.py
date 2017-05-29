@@ -8,6 +8,8 @@ from tpp import threadutil as tu
 from tpp import toolbox as tb
 from tpp import ipc
 
+LOG_SIZE = 30
+
 class _Timestamp(object):
     __slots__ = ('tv',)
     format = '%H:%M:%S'
@@ -21,10 +23,10 @@ class _Timestamp(object):
 
 class _ServiceBase(ipc.ServiceBase):
 
-    def __new__(cls, maxlen=20):
+    def __new__(cls, logsize=None):
         self = super(_ServiceBase, cls).__new__(cls)
         self.quiet_messages = set()
-        self.ipclog = collections.deque(maxlen=maxlen)
+        self.initlog(LOG_SIZE if logsize is None else logsize)
         self.on_message = self.__on_message
         return self
 
@@ -34,6 +36,9 @@ class _ServiceBase(ipc.ServiceBase):
 
     def send(self, *args):
         raise NotImplementedError()
+
+    def initlog(self, logsize):
+        self.ipclog = collections.deque(maxlen=logsize)
 
     def log(self, direction, port_order, msg):
         self.ipclog.appendleft((_Timestamp(), direction, port_order, msg))
@@ -56,8 +61,8 @@ class _ServiceBase(ipc.ServiceBase):
 
 class _ClientService(_ServiceBase):
 
-    def __new__(cls):
-        self = super(_ClientService, cls).__new__(cls)
+    def __new__(cls, *args, **kws):
+        self = super(_ClientService, cls).__new__(cls, *args, **kws)
         self.__port_ready = tu.Event()
         self.__port = None
         self.on_connected = lambda c:tb.pr('* #%1d connected *', c)
@@ -65,11 +70,13 @@ class _ClientService(_ServiceBase):
         return self
 
     def handle_CONNECTED(self, port):
+        self.log(0, port.order, ('*connected*',))
         self.__port = port
         self.__port_ready.set()
         self.on_connected(port.order)
 
     def handle_DISCONNECTED(self, port):
+        self.log(0, port.order, ('*disconnected*',))
         self.__port_ready.clear()
         self.__port = None
         self.on_disconnected(port.order)
@@ -80,18 +87,20 @@ class _ClientService(_ServiceBase):
 
 class _ServerService(_ServiceBase):
 
-    def __new__(cls):
-        self = super(_ServerService, cls).__new__(cls)
+    def __new__(cls, *args, **kws):
+        self = super(_ServerService, cls).__new__(cls, *args, **kws)
         self.__ports = {}
-        self.on_connected = lambda c:tb.pr('* #%1d connected *', c)
+        self.on_connected = lambda c:tb.pr('* #%1d accepted *', c)
         self.on_disconnected = lambda c:tb.pr('* #%1d disconnected *', c)
         return self
 
     def handle_ACCEPTED(self, port):
+        self.log(0, port.order, ('*accepted*',))
         self.__ports[port.order] = port
         self.on_connected(port.order)
 
     def handle_DISCONNECTED(self, port):
+        self.log(0, port.order, ('*disconnected*',))
         del self.__ports[port.order]
         self.on_disconnected(port.order)
 
@@ -106,8 +115,11 @@ class _InteractiveBase(object):
     @enforce_keyword
     def __new__(cls, service,
                 on_message=None, on_connected=None, on_disconnected=None,
-                attr2ev=None, quiet_messages=None):
-        self = super(_InteractiveBase, cls).__new__(cls) 
+                attr2ev=None, quiet_messages=None,
+                logsize=None):
+        if not isinstance(service, _ServiceBase):
+            raise Exception('type of service parameter must be subclass of _ServiceBase')
+        self = super(_InteractiveBase, cls).__new__(cls)
         self.__service = service
         if on_message:
             self.on_message = on_message
@@ -160,10 +172,20 @@ class _InteractiveBase(object):
     def on_disconnected(self, f):
         self.__service.on_disconnected = f
 
-    # received message
+    # message log
+
+    def show(self):
+        RW = ('R', 'W')
+        log = self.__service.ipclog
+        n = len(log)
+        for i, (tms, rw, cid, msg) in reversed(list(enumerate(log))):
+            print '%3d %s %s %2d %s' % (i, tms, RW[rw], cid, msg)
 
     def clear_history(self):
         self.__service.ipclog.clear()
+
+    def resize_history(self, logsize):
+        self.__service.initlog(logsize)
 
     def __getitem__(self, index):
         return self.__service.ipclog[index]
@@ -180,8 +202,9 @@ class InteractiveClient(_InteractiveBase):
     def __new__(cls, addr,
                 packer=None, recover=True, retry=True,
                 on_message=None, on_connected=None, on_disconnected=None,
-                attr2ev=None, quiet_messages=None):
-        service = _ClientService()
+                attr2ev=None, quiet_messages=None,
+                logsize=None):
+        service = _ClientService(logsize=logsize)
         self = super(InteractiveClient, cls).__new__(cls, service,
                                                      on_message=on_message,
                                                      on_connected=on_connected,
@@ -207,8 +230,9 @@ class InteractiveServer(_InteractiveBase):
     def __new__(cls, addr,
                 packer=None,
                 on_message=None, on_connected=None, on_disconnected=None,
-                attr2ev=None, quiet_messages=None):
-        service = _ServerService()
+                attr2ev=None, quiet_messages=None,
+                logsize=None):
+        service = _ServerService(logsize=logsize)
         self = super(InteractiveServer, cls).__new__(cls, service,
                                                      on_message=on_message,
                                                      on_connected=on_connected,
