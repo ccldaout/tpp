@@ -34,7 +34,7 @@ class _ServiceBase(ipc.ServiceBase):
         if not (True in self.quiet_messages or msg[0] in self.quiet_messages):
             tb.pr('%s', msg)
 
-    def send(self, *args):
+    def send(self, msg):
         raise NotImplementedError()
 
     def initlog(self, logsize):
@@ -81,9 +81,9 @@ class _ClientService(_ServiceBase):
         self.__port = None
         self.on_disconnected(port.order)
 
-    def send(self, *args):
-        self.log(1, self.__port.order, args)
-        self.__port.send(list(args))
+    def send(self, msg):
+        self.log(1, self.__port.order, msg)
+        self.__port.send(msg)
 
 class _ServerService(_ServiceBase):
 
@@ -104,11 +104,11 @@ class _ServerService(_ServiceBase):
         del self.__ports[port.order]
         self.on_disconnected(port.order)
 
-    def send(self, port_order, *args):
+    def send(self, port_order, msg):
         if port_order not in self.__ports:
             raise KeyError('Invalid port_order argument: %s', port_order)
-        self.log(1, port_order, args)
-        self.__ports[port_order].send(list(args))
+        self.log(1, port_order, msg)
+        self.__ports[port_order].send(msg)
 
 class _InteractiveBase(object):
 
@@ -220,7 +220,7 @@ class InteractiveClient(_InteractiveBase):
     def __getattr__(self, attr):
         def sender(*args):
             args = (ev,) + args
-            return self(*args)
+            return self(list(args))
         ev = self.attr2ev(attr)
         return sender
 
@@ -247,7 +247,7 @@ class InteractiveServer(_InteractiveBase):
     def __getattr__(self, attr):
         def sender(port_order, *args):
             args = (ev,) + args
-            return self(port_order, *args)
+            return self(port_order, list(args))
         ev = self.attr2ev(attr)
         return sender
 
