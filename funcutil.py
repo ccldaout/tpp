@@ -234,6 +234,73 @@ def hooks(hooks):
     return _hooks
 
 #----------------------------------------------------------------------------
+#                             overload function
+#----------------------------------------------------------------------------
+
+class _Candidate(object):
+
+    def __init__(self, f, types):
+        self._f = f
+        self._types = types
+        self._count = len(types)
+
+    def score(self, ins, own, args, kws):
+        if ins is None and own is not None:
+            args = args[1:]
+        if self._count > len(args):
+            return 0
+        for t, v in zip(self._types, args):
+            if not isinstance(v, t):
+                return 0
+        return self._count
+
+    def call(self, ins, own, args, kws):
+        if own is None:
+            return self._f(*args, **kws)
+        return self._f.__get__(ins, own)(*args, **kws)
+
+class _OverloadFunction(object):
+
+    def __new__(cls):
+        self = super(_OverloadFunction, cls).__new__(cls)
+        self._cands = []
+        return self
+
+    def __dispatch(self, ins, own, args, kws):
+        score = 0
+        match = set()
+        for cand in self._cands:
+            s = cand.score(ins, own, args, kws)
+            if s > 0:
+                if s > score:
+                    score = s
+                    match = set((cand,))
+                elif s == score:
+                    match.add(cand)
+        if not match:
+            raise Exception('no match')
+        elif len(match) != 1:
+            raise Exception('too match')
+        return match.pop().call(ins, own, args, kws)
+
+    def __get__(self, ins, own):
+        def call(*args, **kws):
+            return self.__dispatch(ins, own, args, kws)
+        return call
+
+    def __call__(self, *args, **kws):
+        return self.__dispatch(None, None, args, kws)
+    
+    def overload(self, *args):
+        def _overload(f):
+            self._cands.append(_Candidate(f, args))
+            return self
+        return _overload
+
+def overload(*args):
+    return _OverloadFunction().overload(*args)
+
+#----------------------------------------------------------------------------
 #----------------------------------------------------------------------------
 
 __all__ = []
