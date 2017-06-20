@@ -223,6 +223,8 @@ class Check(object):
 
     def doc(self, name, indent):
         def _doc():
+            if self._doc:
+                yield '- %s -' % self._doc
             if self._accepts_only:
                 yield 'one of %s' % repr(self._accepts)
             else:
@@ -241,9 +243,10 @@ class Check(object):
                     ru = '< %s' % self._sup
                 if rl or ru:
                     yield 'range: %s' % ' ... '.join((rl, ru))
-                if self._doc:
-                    yield '- %s -' % self._doc
-        n_pref = ' ' * indent
+        n_pref = '.' + ' ' * (indent - 1)
+        if self._dim:
+            for d in self._dim:
+                name += '[]' if d is None else ('[%d]' % d)
         name += ': '
         if len(name) > indent:
             yield name
