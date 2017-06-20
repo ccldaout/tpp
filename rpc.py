@@ -5,6 +5,8 @@ from tpp import ipc
 from tpp import toolbox as tb
 from tpp import threadutil as tu
 from tpp import funcutil as fu
+from tpp.ctypesutil import array as _c_array_extension
+from ctypes import Array as _C_ArrayType
 
 ___ = tb.no_except
 
@@ -102,7 +104,9 @@ class _ProxyBackendManager(object):
                 return v
             if callable(v):
                 return _ProxyPackage(cls._register(v), hasattr(v, _ATTR_NOREPL))
-            if isinstance(v, dict):
+            if isinstance(v, _C_ArrayType):
+                _c_array_extension(type(v))
+            elif isinstance(v, dict):
                 v = dict([(k, _encode(e)) for k, e in v.items()])
             elif isinstance(v, (list, tuple)):
                 v = [_encode(e) for e in v]

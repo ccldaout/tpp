@@ -134,8 +134,9 @@ def array(ctype):
             for d in ds:
                 yield '[%d]' % d
         return ''.join(parts(self))
-
     orgctype = ctype
+    if ctype.__reduce__ == _array_reduce:
+        return orgctype
     while hasattr(ctype, '_length_'):
         ctype.__reduce__ = _array_reduce
         ctype.copy = copy
