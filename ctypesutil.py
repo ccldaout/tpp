@@ -19,7 +19,7 @@ def analyze_ctypes(ctype):
 
 # addtional methods
 
-def dump(self, printer=None):
+def dump(self, printer=None, all=False):
     def _isallzero(cdata, csize=0):
         if isinstance(cdata, int):
             return (cdata == 0)
@@ -42,8 +42,14 @@ def dump(self, printer=None):
         elif isinstance(obj, str):
             printer('%*s%s: <%s>', ind, ' ', name, obj.encode('string_escape'))
         elif hasattr(obj, '__len__'):
+            count = 0
+            limit = 0xfffffff if all else 10
             for i in xrange(len(obj)):
+                if count == limit:
+                    printer('%*s ... snip ...', ind, ' ')
+                    break
                 if i == 0 or not _isallzero(obj[i]):
+                    count += 1
                     idxm = '%s[%3d]' % (name, i)
                     _dump(ind, idxm, obj[i], printer)
         else:
