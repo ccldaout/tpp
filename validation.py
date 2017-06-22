@@ -192,7 +192,7 @@ class Check(object):
 
     @property
     def _types_s(self):
-        s = repr(self._types).replace("<type '", '').replace("'>", '')
+        s = repr(self._types).replace("<type '", '').replace("<class '", '').replace("'>", '')
         if isinstance(self._types, tuple):
             s = s[1:-1]
         return s
