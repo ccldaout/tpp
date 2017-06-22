@@ -3,6 +3,7 @@
 import inspect
 import os
 from tpp import funcutil as _fu
+from ctypes import Array as _C_ArrayType
 
 VALIDATION_DISABLE = (os.getenv('TPP_VALIDATION_DISABLE') is not None)
 
@@ -168,20 +169,26 @@ class Check(object):
 
     def __call__(self, name, val):
         if not self._dim:
-            self._check(name, val)
+            self._check(name, val, True)
         else:
-            def breakdown(dim, val):
+            def breakdown(dim, val, checktype):
                 n = dim[0]
                 if n is None:
                     n = len(val)
                 if (len(dim) == 1):
                     for i in xrange(n):
-                        self._check(name, val[i])
+                        self._check(name, val[i], checktype)
                 else:
                     dim = dim[1:]
                     for i in xrange(n):
-                        breakdown(dim, val[i])
-            breakdown(self._dim, val)
+                        breakdown(dim, val[i], checktype)
+
+            if isinstance(self._types, type) and issubclass(self._types, _C_ArrayType):
+                self._check_type(name, val)
+                checktype = False
+            else:
+                checktype = True
+            breakdown(self._dim, val, checktype)
 
     @property
     def _types_s(self):
@@ -190,7 +197,12 @@ class Check(object):
             s = s[1:-1]
         return s
 
-    def _check(self, name, val):
+    def _check_type(self, name, val):
+        if self._types and not isinstance(val, self._types):
+            raise TypeError('Parameter %s require %s, but assigned value %s is not.' %
+                            (name, self._types_s, val))
+
+    def _check(self, name, val, checktype):
         val = self._normalizer(val)
 
         if val in self._accepts:
@@ -198,10 +210,9 @@ class Check(object):
         if self._accepts_only:
             raise TypeError('Parameter %s must be one of %s' % (name, self._accepts))
 
-        if self._types:
-            if not isinstance(val, self._types):
-                raise TypeError('Parameter %s require %s, but assigned value %s is not.' %
-                                (name, self._types_s, val))
+        if checktype:
+            self._check_type(name, val)
+
         if self._min is not None:
             if val < self._min:
                 raise TypeError('Assigned value %s for parameter %s is too small.' % (val, name))
