@@ -122,14 +122,14 @@ class CSocket(object):
         # exception: socket.timeout, socket.error
         if size is None:
             size = len(buf)
-        buf = buffer(buf, 0, size)	# memoryview(buf)[:size]
+        buf = memoryview(buf)[:size]
         tmo_s = self.send_tmo_s
         while size > 0:
             if (tmo_s is not None) and (not self.wait_writable(tmo_s)):
                 raise socket.timeout('send timeout: %f' % tmo_s)
             n = self._sock.send(buf)
             size -= n
-            buf = buffer(buf, n)	# buf = buf[n:]
+            buf = buf[n:]
             tmo_s = self.send_tmo_s
 
     def shutdown(self, m):
