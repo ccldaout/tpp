@@ -267,24 +267,6 @@ class OnetimeMsgBox(object):
             return self._mbox.pop(key)
 
 #----------------------------------------------------------------------------
-#                                Lazy module
-#----------------------------------------------------------------------------
-
-class LazyModule(types.ModuleType):
-    def __new__(cls, name, doc=''):
-        self = super(LazyModule, cls).__new__(cls, name, doc)
-        self.__loaded = False
-        return self
-
-    def __getattr__(self, attr):
-        if not self.__loaded:
-            self.__loaded = True
-            m = __import__(self.__name__, globals(), locals(),
-                           [self.__name__.split('.')[-1]])
-            self.__dict__.update(m.__dict__)
-        return super(LazyModule, self).__getattribute__(attr)
-
-#----------------------------------------------------------------------------
 #----------------------------------------------------------------------------
 
 __all__ = []
