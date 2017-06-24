@@ -144,7 +144,7 @@ def define_keywords(**defined_kws):
 
 class Check(object):
     __slots__ = tuple('_accepts_only:_accepts:_types:_min:_max:_inf:_sup:'
-                      '_pred:_normalizer:_dim:_doc'.split(':'))
+                      '_pred:_normalizer:_dim:_doc:_do_check_val:_is_c_array'.split(':'))
 
     @keyword
     def __init__(self, accepts=(), types=None, min=None, max=None, inf=None, sup=None,
@@ -166,6 +166,8 @@ class Check(object):
         else:
             raise TypeError('dim parameter must be integer or tuple of integer')
         self._doc = doc
+        self._do_check_val = any([_ is not None for _ in [min, max, inf, sup, pred]])
+        self._is_c_array = isinstance(types, type) and issubclass(types, _C_ArrayType)
 
     def __call__(self, name, val):
         if not self._dim:
@@ -182,13 +184,13 @@ class Check(object):
                     dim = dim[1:]
                     for i in xrange(n):
                         breakdown(dim, val[i], checktype)
-
-            if isinstance(self._types, type) and issubclass(self._types, _C_ArrayType):
+            if self._is_c_array:
                 self._check_type(name, val)
                 checktype = False
             else:
-                checktype = True
-            breakdown(self._dim, val, checktype)
+                checktype = bool(self._types)
+            if checktype or self._accepts or self._do_check_val:
+                breakdown(self._dim, val, checktype)
 
     @property
     def _types_s(self):
