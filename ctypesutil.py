@@ -19,48 +19,56 @@ def analyze_ctypes(ctype):
 
 # addtional methods
 
-def dump(self, printer=None, all=False):
-    def _isallzero(cdata, csize=0):
-        if isinstance(cdata, int):
-            return (cdata == 0)
-        elif isinstance(cdata, float):
-            return (cdata == 0.0)
-        elif isinstance(cdata, basestring):
-            return (len(cdata) == 0)
-        if csize == 0:
-            csize = c_sizeof(cdata)
-        return (c_string_at(c_addressof(cdata), csize).count('\x00') == csize)
+def _make_dump():
+    from tpp.toolbox import BufferedPrint
 
-    def _dump(ind, name, obj, printer):
-        if name[:2] == '__':
-            return
-        if hasattr(obj, '_fields_'):
-            printer('%*s%s {', ind, ' ', name)
-            for m in obj._fields_:
-                _dump(ind+2, m[0], getattr(obj, m[0]), printer)
-            printer('%*s}', ind, ' ')
-        elif isinstance(obj, str):
-            printer('%*s%s: <%s>', ind, ' ', name, obj.encode('string_escape'))
-        elif hasattr(obj, '__len__'):
-            count = 0
-            limit = 0xfffffff if all else 10
-            for i in xrange(len(obj)):
-                if count == limit:
-                    printer('%*s ... snip ...', ind, ' ')
-                    break
-                if i == 0 or not _isallzero(obj[i]):
-                    count += 1
-                    idxm = '%s[%3d]' % (name, i)
-                    _dump(ind, idxm, obj[i], printer)
-        else:
-            printer('%*s%s: %s', ind, ' ', name, str(obj))
+    bufferedprint = BufferedPrint()
 
-    def _print(fmt, *args):
-        print fmt % args
+    def dump(self, printer=None, all=False):
+        def _isallzero(cdata, csize=0):
+            if isinstance(cdata, int):
+                return (cdata == 0)
+            elif isinstance(cdata, float):
+                return (cdata == 0.0)
+            elif isinstance(cdata, basestring):
+                return (len(cdata) == 0)
+            if csize == 0:
+                csize = c_sizeof(cdata)
+            return (c_string_at(c_addressof(cdata), csize).count('\x00') == csize)
 
-    if not printer:
-        printer = _print
-    _dump(2, '_', self, printer)
+        def _dump(ind, name, obj, printer):
+            if name[:2] == '__':
+                return
+            if hasattr(obj, '_fields_'):
+                printer('%*s%s {', ind, ' ', name)
+                for m in obj._fields_:
+                    _dump(ind+2, m[0], getattr(obj, m[0]), printer)
+                printer('%*s}', ind, ' ')
+            elif isinstance(obj, str):
+                printer('%*s%s: <%s>', ind, ' ', name, obj.encode('string_escape'))
+            elif hasattr(obj, '__len__'):
+                last = len(obj)-1
+                for i in xrange(len(obj)):
+                    if i == 0 or i == last or not _isallzero(obj[i]):
+                        idxm = '%s[%3d]' % (name, i)
+                        _dump(ind, idxm, obj[i], printer)
+            else:
+                printer('%*s%s: %s', ind, ' ', name, str(obj))
+
+        def _print(fmt, *args):
+            print fmt % args
+
+        if not printer:
+            printer = _print
+
+        bufferedprint.printer = printer
+        bufferedprint.limit_calls = 10000
+        with bufferedprint:
+            _dump(2, '_', self, bufferedprint)
+
+    return dump
+        
+dump = _make_dump()
 
 def copy(self, trg=None):
     if trg:

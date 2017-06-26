@@ -269,4 +269,58 @@ class OnetimeMsgBox(object):
 #----------------------------------------------------------------------------
 #----------------------------------------------------------------------------
 
+class BufferedPrint(object):
+
+    class PrintCancel(Exception):
+        pass
+
+    def __new__(cls, size_b=None, printer=None):
+        def _printer(fmt, *args):
+            print fmt % args
+        self = super(BufferedPrint, cls).__new__(cls)
+        self._size_b = size_b if size_b else 8192
+        self.printer = printer if printer else _printer
+        self._buffer = bytearray(self._size_b)
+        self._b_off = 0
+        self._lock = threading.Lock()
+        self.limit_calls = 0x7fffffff
+        self._enable_limit = not bool(os.getenv('TPP_BPR_NOLIMIT'))
+        return self
+
+    def __call__(self, fmt, *args):
+        if self.limit_calls == 0 and self._enable_limit:
+            self.flush()
+            self.printer("-- snip -- (TPP_BPR_NOLIMIT is not set)")
+            raise self.PrintCancel('Print count reached limitation.')
+        self.limit_calls -= 1
+        s = fmt % args
+        sn = len(s)
+        bn = self._size_b - self._b_off
+        if sn + 1 > bn:
+            self.flush()
+            self.printer("%s", s)
+            return
+        if self._b_off:
+            self._buffer[self._b_off] = '\n'
+            self._b_off += 1
+        self._buffer[self._b_off:self._b_off + sn] = s
+        self._b_off += sn
+                
+    def flush(self):
+        if self._b_off:
+            self.printer("%s", self._buffer[:self._b_off])
+            self._b_off = 0
+
+    def __enter__(self):
+        self._lock.acquire()
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self._lock.release()
+        self.flush()
+        if exc_type is self.PrintCancel:
+            return True
+
+#----------------------------------------------------------------------------
+#----------------------------------------------------------------------------
+
 __all__ = []
