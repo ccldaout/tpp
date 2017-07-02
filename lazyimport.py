@@ -114,6 +114,7 @@ class LazyFinder(object):
 _lazyfinder = LazyFinder()
 register = _lazyfinder.register
 register_root = _lazyfinder.register_root
+register_except = _lazyfinder.remove
 
 sys.meta_path.append(_lazyfinder)
 
