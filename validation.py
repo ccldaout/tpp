@@ -4,15 +4,17 @@ import inspect
 import os
 from tpp import funcutil as _fu
 from ctypes import Array as _C_ArrayType
+from tpp.dynamicopt import option as _opt
 
-VALIDATION_DISABLE = (os.getenv('TPP_VALIDATION_DISABLE') is not None)
+with _opt as _def:
+    _def('TPP_VALIDATION_DISABLE', 'i', '[tpp.validation] disable validation', 0)
 
 #----------------------------------------------------------------------------
 #            Keyword enforcing way 1 - replace k=v, ... to **kws
 #----------------------------------------------------------------------------
 
 def _enforce_keyword(f, strict=False):
-    if VALIDATION_DISABLE:
+    if _opt.TPP_VALIDATION_DISABLE:
         return f
 
     arg = _fu.Arguments(f)
@@ -60,7 +62,7 @@ keyword = enforce_keyword	# for compatibility
 #----------------------------------------------------------------------------
 
 def enforce_keyword_alt(f):
-    if VALIDATION_DISABLE:
+    if _opt.TPP_VALIDATION_DISABLE:
         return f
 
     arg = _fu.Arguments(f)
@@ -311,7 +313,7 @@ class _ArgChecker(object):
 
 def parameter(**kws):
     def wrapper(f):
-        if VALIDATION_DISABLE:
+        if _opt.TPP_VALIDATION_DISABLE:
             return f
         ac = _ArgChecker(**kws)
         ac.modify_doc(f)

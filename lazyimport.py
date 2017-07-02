@@ -4,13 +4,15 @@ import os
 import sys
 import types as types
 from threading import Lock, RLock
+from tpp.dynamicopt import option as _opt
 
-_DEBUG = bool(os.getenv('TPP_LAZYIMPORT'))
+with _opt as _def:
+    _def('TPP_LAZYIMPORT', 'i', '[tpp.lazyimport] print lazyimport action', 0)
 
 class LazyModule(types.ModuleType):
 
     def __new__(cls, name, lazyfinder=None):
-        if _DEBUG:
+        if _opt.TPP_LAZYIMPORT:
             print '[ lazyimport ] -lazy-', name
         self = super(LazyModule, cls).__new__(cls, name, '')
         self.__lock = RLock()
@@ -28,7 +30,7 @@ class LazyModule(types.ModuleType):
             self.__lazyfinder.remove(name)
         if name in sys.modules:
             del sys.modules[name]
-        if _DEBUG:
+        if _opt.TPP_LAZYIMPORT:
             print ('[ lazyimport ] import %s (access to %s)' % (name, attr))
         m = __import__(name, globals(), locals(), [name.split('.')[-1]])
         self.__dict__.update(m.__dict__)

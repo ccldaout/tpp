@@ -1,5 +1,12 @@
 # -*- coding: utf-8 -*-
 
+# [ REMARK ]
+#
+#   tpp.ctypesutil depend on tpp.toolbox and tpp.toolbox depend on this
+#   tpp.dynamicopt. This dependencies means that this module can NOT use
+#   funcions of tpp.cytypeutil. As a result, this module use ORIGINAL CTYPES
+#   instread of tpp.ctypesutil.
+
 # [CASE1] call `option` with FILE argument
 #
 #   # For application which know FILE to be mapped.
@@ -22,11 +29,18 @@
 #       define(KEY, TYPE, COMMENT[, INITIAL_VALUE)
 #	                :
 
-import mmap
+import ctypes
 import fcntl
+import mmap
 import os
-from tpp import ctypesutil as cu
-from tpp.toolbox import no_except as ___
+
+def ___(func, ret_if_exc=None):
+    def _f(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except:
+            return ret_if_exc
+    return _f
 
 class Option(object):
 
@@ -38,10 +52,14 @@ class Option(object):
     __MAGIC = '$OPT'
     __IDXLIM = 255		# 255 is deduced by type of idxcnt (uint_8)
 
-    class __union(cu.Union):
-        _fields_ = [('i', cu.c_int64),
-                    ('u', cu.c_uint64),
-                    ('f', cu.c_double)]
+    class _union(ctypes.Union):
+        _fields_ = [('i', ctypes.c_int64),
+                    ('u', ctypes.c_uint64),
+                    ('f', ctypes.c_double)]
+        def __setattr__(self, attr, val):
+            if attr in ('i', 'u') and isinstance(val, float):
+                val = int(val)
+            super(Option._union, self).__setattr__(attr, val)
 
     def __new__(cls):
         self = super(Option, cls).__new__(cls)
@@ -74,13 +92,18 @@ class Option(object):
 
     def __make_cobj(self, reqidxcnt=__IDXLIM, buffer=None):
         attrsiz = self.__MAPSIZE_b - (reqidxcnt * 8) - 8
-        class _Option(cu.Struct):
-            _fields_ = [('magic', cu.c_char*4),
-                        ('idxcnt', cu.c_uint8),
-                        ('idxnxt', cu.c_uint8),
-                        ('_pad', cu.c_uint8*2),
-                        ('v', self.__union*reqidxcnt),
-                        ('attr_s', cu.c_char*attrsiz)]
+        class _Option(ctypes.Structure):
+            _fields_ = [('magic', ctypes.c_char*4),
+                        ('idxcnt', ctypes.c_uint8),
+                        ('idxnxt', ctypes.c_uint8),
+                        ('_pad', ctypes.c_uint8*2),
+                        ('v', self._union*reqidxcnt),
+                        ('attr_s', ctypes.c_char*attrsiz)]
+            def dup(self):
+                return type(self).from_buffer_copy(self)
+            def clear(self):
+                ctypes.memset(ctypes.addressof(self), 0, ctypes.sizeof(self))
+                pass
         if buffer:
             return _Option.from_buffer(buffer)
         else:
@@ -122,14 +145,26 @@ class Option(object):
             raise KeyError("Idenfier '%s' is not found." % ident)
         return idx, attr
 
-    def __open_excl(self, name):
+    def __open_excl(self, create_if):
+        name, user = self.__name
         if '/' not in name:
-            path = os.path.expanduser('~/.tpp/dynamicopt')
-            ___(os.makedirs)(path)
+            path = os.path.expanduser('~%s/.tpp/dynamicopt' % user)
+            ___(os.makedirs)(path, 0755)
             path = os.path.join(path, name)
         else:
             path = name
-        fd = os.open(path, os.O_RDWR|os.O_CREAT, 0666)
+        o_flags = os.O_RDWR
+        if create_if:
+            o_flags |= os.O_CREAT
+        fd = os.open(path, o_flags, 0666)
+        if os.geteuid() == 0 and '/' not in name and user != '':
+            optdir = os.path.dirname(path)
+            tppdir = os.path.dirname(optdir)
+            st = os.stat(os.path.dirname(tppdir))	# ~<user>
+            os.chown(tppdir, st.st_uid, st.st_gid)
+            os.chown(optdir, st.st_uid, st.st_gid)
+            os.chown(path, st.st_uid, st.st_gid)
+        ___(os.fchmod)(fd, 0666)
         fcntl.lockf(fd, fcntl.LOCK_EX)		# Exclusive lock until file is closed.
         return os.fdopen(fd, 'r+b')
 
@@ -192,7 +227,7 @@ class Option(object):
     def __enter__(self):
         self.__unmap()
         if self.__name:
-            self.__fobj = self.__open_excl(self.__name)
+            self.__fobj = self.__open_excl(True)
             self.__mmap()
         return self.__define
 
@@ -203,8 +238,8 @@ class Option(object):
             self.__fobj.close()
             self.__fobj = None
 
-    def __call__(self, name):
-        self.__name = name
+    def __call__(self, name, user=''):
+        self.__name = (name, user)
         return self
 
     def __getattr__(self, attr):
@@ -222,6 +257,14 @@ class Option(object):
             self.__check_ident(attr, dupcheck=False)
             idx, (ident, type_s, _) = self.__get_attr(attr)
             return setattr(self.__cobj.v[idx], type_s, val)
+
+    def _load(self):
+        self.__unmap()
+        if self.__name:
+            with self.__open_excl(False) as f:
+                self.__fobj = f
+                self.__mmap()
+                self.__fobj.close()
 
     def _show(self):
         sorted_attr = sorted(enumerate(self.__attr), key=lambda v:v[1][0])
@@ -289,6 +332,8 @@ class Option(object):
         return idx is not None
 
 option = Option()
+with option('tpp.default'):
+    pass
 
 __all__ = ['option']
 
@@ -301,10 +346,10 @@ if __name__ == '__main__':
             print 'Usage: python -m %s %s show' % prms
             print '     : python -m %s %s ident[=value] [ident[=value] ...]' % prms
     elif sys.argv[2] == 'show':
-        with option(sys.argv[1]): pass
+        option(sys.argv[1])._load()
         option._show()
     else:
-        with option(sys.argv[1]): pass
+        option(sys.argv[1])._load()
         for expr in sys.argv[2:]:
             subexprs = expr.split('=')
             if len(subexprs) == 1:

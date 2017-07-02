@@ -161,14 +161,25 @@ class Parameter(object):
                         ('prm', o_type)]
         return _prmmap_t
 
-    def __open(self, name):
+    def __open(self, name, user, create_if):
         if '/' not in name:
-            path = os.path.expanduser('~/.tpp/dynamicprm')
-            ___(os.makedirs)(path)
+            path = os.path.expanduser('~/.tpp/dynamicprm' % user)
+            ___(os.makedirs)(path, 0755)
             path = os.path.join(path, name)
         else:
             path = name
-        fd = os.open(path, os.O_RDWR|os.O_CREAT, 0666)
+        o_flags = os.O_RDWR
+        if create_if:
+            o_flags |= os.O_CREAT
+        fd = os.open(path, o_flags, 0666)
+        if os.geteuid() == 0 and '/' not in name and user != '':
+            optdir = os.path.dirname(path)
+            tppdir = os.path.dirname(optdir)
+            st = os.stat(os.path.dirname(tppdir))	# ~<user>
+            os.chown(tppdir, st.st_uid, st.st_gid)
+            os.chown(optdir, st.st_uid, st.st_gid)
+            os.chown(path, st.st_uid, st.st_gid)
+        ___(os.fchmod)(fd, 0666)
         return os.fdopen(fd, 'r+b')
 
     @staticmethod
@@ -197,13 +208,13 @@ class Parameter(object):
         mobj.close()
         return o_type, pickled_type
 
-    def __call__(self, name, o_type=None):
+    def __call__(self, name, o_type=None, user=''):
         if o_type:
             pickled_type = self.__pickle(o_type)
             if len(pickled_type) > self.__MAX_PICKLED_CTYPE:
                 raise Exception('Passed o_type is too big to be pickled.')
 
-        with self.__open(name) as f:
+        with self.__open(name, user, bool(o_type)) as f:
             if o_type is None:
                 o_type, pickled_type = self.__extract(f)
             c_type = self.__cobj_class(o_type, len(pickled_type))

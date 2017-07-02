@@ -6,6 +6,12 @@ import threading
 import traceback
 import time
 import types
+from tpp.dynamicopt import option as _opt
+
+with _opt as _def:
+    _def('TPP_PR_NAME', 'i', '[tpp.toolbox] toolbox.pr add self thread name', 1)
+    _def('TPP_EXC_DEBUG', 'i', '[tpp.toolbox] no_except print traceback', 0)
+    _def('TPP_BPR_NOLIMIT', 'i', "[tpp.toolbox] BufferedPrint do't omit string", 0)
 
 #----------------------------------------------------------------------------
 #                              Small utilities
@@ -15,14 +21,11 @@ def alignP2(_z, p2):
     return ((_z | (p2-1)) + 1)
 
 class _Printer(object):
-    __slots__ = ('print_name',)
+    __slots__ = ()
     _lock = threading.Lock()
 
-    def __init__(self):
-        self.print_name = os.getenv('TPP_PR_NAME')
-
     def __call__(self, fmt, *args):
-        if self.print_name:
+        if _opt.TPP_PR_NAME:
             fmt = threading.current_thread().name + ': ' +fmt
         s = fmt % args
         with self._lock:
@@ -58,7 +61,7 @@ def no_except(func, ret_if_exc=None):
         try:
             return func(*args, **kwargs)
         except:
-            if os.getenv('TPP_EXC_DEBUG'):
+            if _opt.TPP_EXC_DEBUG:
                 traceback.print_exc()
             return ret_if_exc
     return _f
@@ -284,11 +287,10 @@ class BufferedPrint(object):
         self._b_off = 0
         self._lock = threading.Lock()
         self.limit_calls = 0x7fffffff
-        self._enable_limit = not bool(os.getenv('TPP_BPR_NOLIMIT'))
         return self
 
     def __call__(self, fmt, *args):
-        if self.limit_calls == 0 and self._enable_limit:
+        if self.limit_calls == 0 and not _opt.TPP_BPR_NOLIMIT:
             self.flush()
             self.printer("-- snip -- (TPP_BPR_NOLIMIT is not set)")
             raise self.PrintCancel('Print count reached limitation.')

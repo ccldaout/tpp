@@ -10,6 +10,10 @@ import time
 import traceback
 import tpp.threadutil as tu
 import tpp.toolbox as tb
+from tpp.dynamicopt import option as _opt
+
+with _opt as _def:
+    _def('TPP_IPC_DEBUG', 'i', '[tpp.ipc] print message handled by packer', 0)
 
 ___ = tb.no_except
 
@@ -153,7 +157,7 @@ class NoMoreData(Exception):
 
 class PackerMeta(type):
     def __new__(mcls, name, bases, dic):
-        if os.getenv('TPP_IPC_DEBUG'):
+        if _opt.TPP_IPC_DEBUG:
             def wrapper_pack(f):
                 def pack(self, msg):
                     tb.pr('  PACK: %.2048s', msg)

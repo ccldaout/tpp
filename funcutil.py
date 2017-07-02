@@ -3,12 +3,14 @@
 import inspect
 import functools
 import os
+from tpp.dynamicopt import option as _opt
+
+with _opt as _def:
+    _def('TPP_PRINT_SRC', 'i', '[tpp.funcutil] print generated source', 0)
 
 #----------------------------------------------------------------------------
 #
 #----------------------------------------------------------------------------
-
-TPP_PRINT_SRC = os.getenv('TPP_PRINT_SRC')
 
 ### def gen_func(fname, src, dic=None, filename=None):
 ###     if filename is None:
@@ -28,7 +30,7 @@ def gen_func(fname, src, dic=None, filename=None):
         filename = '<generate %s>' % fname
     if dic is None:
         dic = {}
-    if TPP_PRINT_SRC:
+    if _opt.TPP_PRINT_SRC:
         print src
     mn = '__maker'
     src = '''def %s(%s):
