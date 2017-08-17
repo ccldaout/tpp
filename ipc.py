@@ -139,8 +139,9 @@ class CSocket(object):
     def shutdown(self, m):
         try:
             self._sock.shutdown(m)
-        except:
-            traceback.print_exc()
+        except socket.error as e:
+            if e.errno != os.errno.ENOTCONN:
+                traceback.print_exc()
 
     def shut_read(self):
         self.shutdown(socket.SHUT_RD)
@@ -407,6 +408,7 @@ class Acceptor(object):
             except:
                 traceback.print_exc()
                 csock.close()
+            csock = None	# to be gc-ed as soon as possible when csock is closed.
 
     def start(self, background=True):
         svr_csock = CSocket(self._addr, server=True)

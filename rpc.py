@@ -22,6 +22,7 @@ _ATTR_NOREPL = '_RPC_NOREPL'
 class _ProxyFrontend(object):
     __slots__ = ['_proxy_id', '_port', '_no_reply', '__name__', '__doc__']
     _mbox = tb.OnetimeMsgBox()
+    _ign_in_del = (tu.Queue.AlreadyStopped,)
 
     def __new__(cls, port, proxy_backend_id, no_reply):
         self = super(_ProxyFrontend, cls).__new__(cls)
@@ -59,10 +60,9 @@ class _ProxyFrontend(object):
         cls._mbox.post(msg[1], msg)
 
     def __del__(self):
-        # [AD-HOC] try..except is to suppress error whene interpeter shutdown
         try:
             self._port.send(['unref', self._proxy_id])
-        except:
+        except self._ign_in_del:
             pass
 
 class _ProxyPackage(object):
@@ -304,6 +304,8 @@ def server(addr, funcs_list, background=True, thread_max=0, thread_lwm=0):
     ipc.Acceptor(svc, addr).start(background)
 
 class client(object):
+    _interpreter = tu.interpreter
+
     def __new__(cls, addr,
                 itmo_s=2.0, ctmo_s=None, background=True, lazy_setup=True):
         self = super(client, cls).__new__(cls)
@@ -328,13 +330,8 @@ class client(object):
             return v
 
     def __del__(self):
-        # [AD-HOC] try..except is to suppress error whene interpeter shutdown
-        try:
-            if self._rc:
-                self._rc.stop()
-                self._rc = None
-        except:
-            pass
+        if self._interpreter.alive and self._rc:
+            self._rc.stop()
 
 #----------------------------------------------------------------------------
 #----------------------------------------------------------------------------

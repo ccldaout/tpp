@@ -57,7 +57,7 @@ def Thread(**kwargs):
         try:
             return target(*args, **kws)
         except:
-            if m and m.alive:
+            if m.alive:
                 raise
     kwargs['target'] = outer_target
 
@@ -94,6 +94,9 @@ class Event(type(threading.Event())):
 #-----------------------------------------------------------------------------
 
 class Queue(object):
+    class AlreadyStopped(Exception):
+        pass
+
     def __new__(cls, value_in_tmo = None, value_in_stopped = False):
         self = super(Queue, cls).__new__(cls)
         self._list = collections.deque()
@@ -106,7 +109,7 @@ class Queue(object):
     def put(self, data):
         with self._cond:
             if self._stopped:
-                raise RuntimeError('Queue.stop is already called.')
+                raise self.AlreadyStopped('Queue.stop is already called.')
             self._list.append(data)
             self._cond.notify_all()
             return self
