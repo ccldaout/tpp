@@ -111,18 +111,28 @@ def _wrap_setattr(setattr_):
     def _setattr(self, mbr, val):
         if mbr not in self._permit_attrs_ and not self._permit_new_attr_:
             raise AttributeError('%s has no member %s.' % (type(self).__name__, mbr))
-        if isinstance(val, float):
-            try:
-                setattr_(self, mbr, val)
-            except TypeError:
-                setattr_(self, mbr, int(val))
-        else:
+        try:
             setattr_(self, mbr, val)
+        except TypeError:
+            if isinstance(val, float):
+                setattr_(self, mbr, int(val))
+            else:
+                raise
     return _setattr
+
+_c_ints = (c_int8, c_uint8, c_int16, c_uint16, c_int32, c_uint32, c_int64, c_uint64)
 
 def _wrap_setitem(setitem_):
     def _setitem(self, idx, val):
-        setitem_(self, idx, int(val))
+        if isinstance(idx, _c_ints):
+            idx = idx.value
+        try:
+            setitem_(self, idx, val)
+        except TypeError:
+            if isinstance(val, float):
+                setitem_(self, idx, int(val))
+            else:
+                raise
     return _setitem
 
 # Enable a ctypes array to be cPickled.
@@ -162,8 +172,7 @@ def array(ctype):
         ctype.__repr__ = __repr__
         ctype2 = ctype
         ctype = ctype._type_
-    if issubclass(ctype, (c_int, c_long, c_uint, c_ulong)):
-        ctype2.__setitem__ = _wrap_setitem(ctype2.__setitem__)
+    ctype2.__setitem__ = _wrap_setitem(ctype2.__setitem__)
     return orgctype
 
 # Additional properties for ctypes structure object.
@@ -302,8 +311,49 @@ class Union(ctypes.Union):
             mbr = self._assigned_mbr_
         return '%s(%s:%s)' % (type(self).__name__, mbr, repr(getattr(self, mbr)))
 
+# Enum class
+
+class _MetaEnum(type(ctypes.c_int32)):
+    def __new__(mcls, name, bases, dic):
+        cls = super(_MetaEnum, mcls).__new__(mcls, name, bases, dic)
+        for k, v in dic.items():
+            if isinstance(v, (int, long)):
+                setattr(cls, k, cls(v))
+        return cls
+
+    def __mul__(cls, val):
+        return _MetaArray('%s_Array_%d' % (cls.__name__, val),
+                          (ctypes.Array,),
+                          {'_length_':val,
+                           '_type_':cls})
+
+class Enum(ctypes.c_int32):
+    __metaclass__ = _MetaEnum
+
+    def __hash__(self):
+        return hash(self.value)
+
+    def __coerce__(self, other):
+        return (self.value, other)
+
+    def __int__(self):
+        return self.value
+
+    def __long__(self):
+        return long(self.value)
+
+    def __float__(self):
+        return float(self.value)
+
+    def __repr__(self):
+        i_self = int(self)
+        for k, v in type(self).__dict__.iteritems():
+            if v == i_self:
+                return '%s(%d)' % (k, i_self)
+        return '?<%s>(%d)' % (type(self).__name__, i_self)
+
+    __str__ = __repr__
+
+#
+
 __all__ = []
-
-if __name__ == '__main__':
-    pass
-
