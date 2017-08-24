@@ -44,9 +44,9 @@ def ___(func, ret_if_exc=None):
 
 class Option(object):
 
-    __slots__ = ('_Option__mobj', '_Option__cobj',
-                 '_Option__attr', '_Option__cache',
-                 '_Option__name', '_Option__fobj')
+    __slots__ = ('_Option__attr', '_Option__cache', '_Option__reserve',
+                 '_Option__name', '_Option__user',
+                 '_Option__mobj', '_Option__cobj', '_Option__fobj')
 
     __MAPSIZE_b = 8192
     __MAGIC = '$OPT'
@@ -65,7 +65,9 @@ class Option(object):
         self = super(Option, cls).__new__(cls)
         self.__attr = []	# list of (ident, type_s, comment)
         self.__cache = {}	# depend on __attr except comment (__attr[*][2])
+        self.__reserve = {}
         self.__name = None
+        self.__user = None
         self.__fobj = None	# opened file object
         self.__mobj = None
         self.__cobj = self.__make_cobj()
@@ -146,18 +148,17 @@ class Option(object):
         return idx, attr
 
     def __open_excl(self, create_if):
-        name, user = self.__name
-        if '/' not in name:
-            path = os.path.expanduser('~%s/.tpp/dynamicopt' % user)
+        if '/' not in self.__name:
+            path = os.path.expanduser('~%s/.tpp/dynamicopt' % self.__user)
             ___(os.makedirs)(path, 0755)
-            path = os.path.join(path, name)
+            path = os.path.join(path, self.__name)
         else:
-            path = name
+            path = self.__name
         o_flags = os.O_RDWR
         if create_if:
             o_flags |= os.O_CREAT
         fd = os.open(path, o_flags, 0666)
-        if os.geteuid() == 0 and '/' not in name and user != '':
+        if os.geteuid() == 0 and '/' not in self.__name and self.__user != '':
             optdir = os.path.dirname(path)
             tppdir = os.path.dirname(optdir)
             st = os.stat(os.path.dirname(tppdir))	# ~<user>
@@ -219,7 +220,9 @@ class Option(object):
         self.__attr.append((ident, type_s.lower(), comment))
         self.__cobj.idxnxt += 1
         self.__remake_cobj_attr_s()
-        if val and self.__cobj.v[self.__cobj.idxnxt-1].i == 0:
+        if ident in self.__reserve:
+            setattr(self, ident, self.__reserve.pop(ident))
+        elif val and self.__cobj.v[self.__cobj.idxnxt-1].i == 0:
             setattr(self, ident, val)
 
         assert self.__cobj.idxnxt == len(self.__attr)
@@ -238,14 +241,17 @@ class Option(object):
             self.__fobj.close()
             self.__fobj = None
 
-    def __call__(self, name, user=''):
-        self.__name = (name, user)
+    def __call__(self, name='', user=''):
+        self.__name = name
+        self.__user = user
         return self
 
     def __getattr__(self, attr):
         uobj, type_s = self.__cache.get(attr, (None, None))
         if uobj is None:
-            idx, (_, type_s, _) = self.__get_attr(attr)
+            idx, (_, type_s, _) = self.__find_attr(attr)
+            if idx is None:
+                return 0
             uobj = self.__cobj.v[idx]
             self.__cache[attr] = (uobj, type_s)
         return getattr(uobj, type_s)
@@ -255,8 +261,11 @@ class Option(object):
             super(Option, self).__setattr__(attr, val)
         else:
             self.__check_ident(attr, dupcheck=False)
-            idx, (ident, type_s, _) = self.__get_attr(attr)
-            return setattr(self.__cobj.v[idx], type_s, val)
+            idx, (ident, type_s, _) = self.__find_attr(attr)
+            if idx is None:
+                self.__reserve[attr] = val
+            else:
+                return setattr(self.__cobj.v[idx], type_s, val)
 
     def _load(self):
         self.__unmap()
