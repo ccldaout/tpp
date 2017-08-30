@@ -234,10 +234,25 @@ class ThreadPool(object):
     def wait(self):
         self._no_worker.wait()
 
-#----------------------------------------------------------------------------
-#----------------------------------------------------------------------------
-
 threadpool = ThreadPool(thread_max=128, thread_lwm=8)
 threadpool.start()
+
+#-----------------------------------------------------------------------------
+#
+#-----------------------------------------------------------------------------
+
+def synchronizer(lock=None):
+    if lock is None:
+        lock = Lock()
+    def synchronize(f):
+        @functools.wraps(f)
+        def _synchronize(*args, **kwargs):
+            with lock:
+                return f(*args, **kwargs)
+        return _synchronize
+    return synchronize
+
+#----------------------------------------------------------------------------
+#----------------------------------------------------------------------------
 
 __all__ = []
