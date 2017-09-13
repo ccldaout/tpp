@@ -135,6 +135,13 @@ def _wrap_setitem(setitem_):
                 raise
     return _setitem
 
+def _wrap_getitem(getitem_):
+    def _getitem(self, idx):
+        if isinstance(idx, _c_ints):
+            idx = idx.value
+        return getitem_(self, idx)
+    return _getitem
+
 # Enable a ctypes array to be cPickled.
 
 def _array_unpickle((ctype, ds), bs):
@@ -173,6 +180,7 @@ def array(ctype):
         ctype2 = ctype
         ctype = ctype._type_
     ctype2.__setitem__ = _wrap_setitem(ctype2.__setitem__)
+    ctype2.__getitem__ = _wrap_getitem(ctype2.__getitem__)
     return orgctype
 
 # Additional properties for ctypes structure object.
