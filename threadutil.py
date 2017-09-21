@@ -16,6 +16,8 @@ pr = tb.pr			# for compatibility
 
 _tmo_s = 3600*24*365*100
 
+# canceling tool
+
 class Canceled(Exception):
     pass
 
@@ -26,47 +28,73 @@ def test_cancel(cleaner=None):
             cleaner()
         raise Canceled()
 
-def _monitor_interpreter():
+# make daemon thread to finish sliently in interpter shutdown
+
+def quiet_finalize():
     import atexit
-    class _Monitor(object):
+    import functools
+
+    class Monitor(object):
         pass
-    m = _Monitor()
-    m.alive = True
+    monitor = Monitor()
+    monitor.running = True
+
     @atexit.register
-    def _clear_alive():
-        m.alive = None
-    return m
+    def go_shutdown():
+        monitor.running = False
 
-interpreter = _monitor_interpreter()
+    def is_running(*args):
+        # args is never used but this is required for simplified coding
+        # in case of assigning threadutil.is_running to a class attribute.
+        return monitor.running
 
-def Thread(**kwargs):
-    def wrap_join(thr, orgjoin):
-        def join(timeout=None):
-            tmo_s = timeout if timeout else _tmo_s
-            while thr.is_alive():
-                orgjoin(tmo_s)
-                if timeout:
-                    break
-            return not thr.is_alive()
-        return join
+    def decorator(target):
+        @functools.wraps(target)
+        def _target(*argv, **kwargs):
+            try:
+                return target(*argv, **kwargs)
+            except:
+                if monitor.running:
+                    raise
+        return _target
 
-    target = kwargs['target']
-    @functools.wraps(target)
-    def outer_target(*args, **kws):
-        m = interpreter
-        try:
-            return target(*args, **kws)
-        except:
-            if m.alive:
-                raise
-    kwargs['target'] = outer_target
+    return decorator, is_running
 
-    t = threading.Thread(**kwargs)
-    t.join = wrap_join(t, t.join)
-    t._canceling = threading.Event()
-    t.cancel = (lambda thr: lambda: thr._canceling.set())(t)
-    t.clear_cancel = (lambda thr: lambda: thr._canceling.clear())(t)
-    return t
+quiet_finalize, is_running = quiet_finalize()
+
+# interpreter exist for compatibility
+
+class interpreter(object):
+    def __init__(self, is_running):
+        self._is_running = is_running
+
+    @property
+    def alive(self):
+        return self._is_running()
+
+interpreter = interpreter(is_running)
+
+# extend classes
+
+class Thread(threading.Thread):
+    def __init__(self, **kwargs):
+        kwargs['target'] = quiet_finalize(kwargs['target'])
+        super(Thread, self).__init__(**kwargs)
+        self._canceling = threading.Event()
+
+    def join(self, timeout=None):
+        tmo_s = timeout if timeout else _tmo_s
+        while self.is_alive():
+            super(Thread, self).join(tmo_s)
+            if timeout:
+                break
+        return not self.is_alive()
+
+    def cancel(self):
+        self._canceling.set()
+
+    def clear_cancel(self):
+        self._canceling.clear()
 
 class Condition(type(threading.Condition())):
     def wait(self, timeout=None):

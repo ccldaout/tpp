@@ -304,7 +304,7 @@ def server(addr, funcs_list, background=True, thread_max=0, thread_lwm=0):
     ipc.Acceptor(svc, addr).start(background)
 
 class client(object):
-    _interpreter = tu.interpreter
+    _is_running = tu.is_running
 
     def __new__(cls, addr,
                 itmo_s=2.0, ctmo_s=None, background=True, lazy_setup=True):
@@ -330,7 +330,7 @@ class client(object):
             return v
 
     def __del__(self):
-        if self._interpreter.alive and self._rc:
+        if self._is_running() and self._rc:
             self._rc.stop()
 
 #----------------------------------------------------------------------------
