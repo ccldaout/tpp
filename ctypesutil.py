@@ -341,6 +341,11 @@ class Enum(ctypes.c_int32):
     def __hash__(self):
         return hash(self.value)
 
+    def __eq__(self, other):
+        if isinstance(other, ctypes.c_int32):
+            return self.value == other.value
+        return self.value == other
+
     def __coerce__(self, other):
         return (self.value, other)
 
