@@ -165,7 +165,7 @@ class Option(object):
             os.chown(tppdir, st.st_uid, st.st_gid)
             os.chown(optdir, st.st_uid, st.st_gid)
             os.chown(path, st.st_uid, st.st_gid)
-        ___(os.fchmod)(fd, 0666)
+        ___(os.chmod)(path, 0666)		# os.fchmod is not exist in Pythonista
         fcntl.lockf(fd, fcntl.LOCK_EX)		# Exclusive lock until file is closed.
         return os.fdopen(fd, 'r+b')
 
@@ -230,8 +230,11 @@ class Option(object):
     def __enter__(self):
         self.__unmap()
         if self.__name:
-            self.__fobj = self.__open_excl(True)
-            self.__mmap()
+            try:
+                self.__fobj = self.__open_excl(True)
+                self.__mmap()
+            except:
+                pass
         return self.__define
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
