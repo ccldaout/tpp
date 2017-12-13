@@ -9,7 +9,10 @@ from tpp.dynamicopt import option as _opt
 with _opt as _def:
     _def('TPP_LAZYIMPORT', 'i', '[tpp.lazyimport] print lazyimport action', 0)
 
-class LazyModule(types.ModuleType):
+class ModuleType(types.ModuleType):
+    pass
+
+class LazyModule(ModuleType):
 
     def __new__(cls, name, lazyfinder=None):
         if _opt.TPP_LAZYIMPORT:
@@ -34,18 +37,21 @@ class LazyModule(types.ModuleType):
             print ('[ lazyimport ] import %s (access to %s)' % (name, attr))
         m = __import__(name, globals(), locals(), [name.split('.')[-1]])
         self.__dict__.update(m.__dict__)
+        v = getattr(self, attr)
+        self.__class__ = ModuleType
+        return v
 
     def __getattribute__(self, attr):
         if attr == '__dict__':
             with self.__lock:
                 if not self.__loaded:
-                    self.__import(attr)
+                    return self.__import(attr)
         return super(LazyModule, self).__getattribute__(attr)
 
     def __getattr__(self, attr):
         with self.__lock:
             if not self.__loaded:
-                self.__import(attr)
+                return self.__import(attr)
         return super(LazyModule, self).__getattribute__(attr)
 
 class LazyLoader(object):
