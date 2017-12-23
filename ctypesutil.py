@@ -137,9 +137,13 @@ def _wrap_setitem(setitem_):
 
 def _wrap_getitem(getitem_):
     def _getitem(self, idx):
-        if isinstance(idx, _c_ints):
-            idx = idx.value
-        return getitem_(self, idx)
+        try:
+            return getitem_(self, idx)
+        except:
+            if isinstance(idx, _c_ints):
+                idx = idx.value
+                return getitem_(self, idx)
+            raise
     return _getitem
 
 # Enable a ctypes array to be cPickled.
