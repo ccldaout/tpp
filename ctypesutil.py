@@ -2,6 +2,80 @@
 
 from tpp.ctypessyms import *
 
+# Enum class
+
+from tpp.enumtype import EnumBase as _EnumBase
+
+class _MetaEnum(type(ctypes.c_int32)):
+    def __new__(mcls, name, bases, dic):
+        cls = super(_MetaEnum, mcls).__new__(mcls, name, bases, dic)
+        cls2 = type(_EnumBase)(name+'_', (_EnumBase,), dic)
+        cls._enumtype_ = cls2
+        for k, v in dic.items():
+            if isinstance(v, (int, long)):
+                setattr(cls, k, getattr(cls2, k))
+        return cls
+
+    def __mul__(cls, val):
+        return _MetaArray('%s_Array_%d' % (cls.__name__, val),
+                          (ctypes.Array,),
+                          {'_length_':val,
+                           '_type_':cls})
+
+class Enum(ctypes.c_int32):
+    __metaclass__ = _MetaEnum
+
+    def __hash__(self):
+        return hash(self.value)
+
+    def __eq__(self, other):
+        if isinstance(other, ctypes.c_int32):
+            return self.value == other.value
+        return self.value == other
+
+    def __coerce__(self, other):
+        return (self.value, other)
+
+    def __int__(self):
+        return self.value
+
+    def __long__(self):
+        return long(self.value)
+
+    def __float__(self):
+        return float(self.value)
+
+    def __repr__(self):
+        i_self = int(self)
+        for k, v in type(self).__dict__.iteritems():
+            if v == i_self:
+                return '%s(%d)' % (k, i_self)
+        return '?<%s>(%d)' % (type(self).__name__, i_self)
+
+    __str__ = __repr__
+
+class EnumDesc(object):
+
+    def __new__(cls, orgdesc):
+        self = super(EnumDesc, cls).__new__(cls)
+        self._orgdesc = orgdesc
+        return self
+
+    def __get__(self, ins, own):
+        v = self._orgdesc.__get__(ins, own)
+        if ins is None:
+            return v
+        return v._enumtype_(v.value)
+
+    def __set__(self, ins, val):
+        self._orgdesc.__set__(ins, val)
+
+def _wrap_getitem_enum(getitem_):
+    def _getitem(self, idx):
+        v = getitem_(self, idx)
+        return v._enumtype_(v.value)
+    return _getitem
+
 # additional functions
 
 def is_array(ctype):
@@ -135,17 +209,6 @@ def _wrap_setitem(setitem_):
                 raise
     return _setitem
 
-def _wrap_getitem(getitem_):
-    def _getitem(self, idx):
-        try:
-            return getitem_(self, idx)
-        except:
-            if isinstance(idx, _c_ints):
-                idx = idx.value
-                return getitem_(self, idx)
-            raise
-    return _getitem
-
 # Enable a ctypes array to be cPickled.
 
 def _array_unpickle((ctype, ds), bs):
@@ -170,9 +233,10 @@ def array(ctype):
                 yield '[%d]' % d
         return ''.join(parts(self))
     orgctype = ctype
-    if ctype.__reduce__ == _array_reduce:
-        return orgctype
     while hasattr(ctype, '_length_'):
+        if hasattr(ctype, '_customized_'):
+            return orgctype
+        ctype._customized_ = True
         ctype.__reduce__ = _array_reduce
         ctype.copy = copy
         ctype.dup = copy
@@ -184,7 +248,8 @@ def array(ctype):
         ctype2 = ctype
         ctype = ctype._type_
     ctype2.__setitem__ = _wrap_setitem(ctype2.__setitem__)
-    ctype2.__getitem__ = _wrap_getitem(ctype2.__getitem__)
+    if issubclass(ctype, Enum):
+        ctype2.__getitem__ = _wrap_getitem_enum(ctype2.__getitem__)
     return orgctype
 
 # Additional properties for ctypes structure object.
@@ -241,6 +306,8 @@ def _setup(cls):
         for fld in flds:
             if is_array(fld[1]):
                 array(fld[1])
+            if issubclass(fld[1], Enum):
+                setattr(cls, fld[0], EnumDesc(cls.__dict__[fld[0]]))
 
     cls.__setattr__ = _wrap_setattr(cls.__setattr__)
     cls._property_ = _PropertyCacheDesc('_property_')
@@ -322,54 +389,6 @@ class Union(ctypes.Union):
         if hasattr(self, '_assigned_mbr_'):
             mbr = self._assigned_mbr_
         return '%s(%s:%s)' % (type(self).__name__, mbr, repr(getattr(self, mbr)))
-
-# Enum class
-
-class _MetaEnum(type(ctypes.c_int32)):
-    def __new__(mcls, name, bases, dic):
-        cls = super(_MetaEnum, mcls).__new__(mcls, name, bases, dic)
-        for k, v in dic.items():
-            if isinstance(v, (int, long)):
-                setattr(cls, k, cls(v))
-        return cls
-
-    def __mul__(cls, val):
-        return _MetaArray('%s_Array_%d' % (cls.__name__, val),
-                          (ctypes.Array,),
-                          {'_length_':val,
-                           '_type_':cls})
-
-class Enum(ctypes.c_int32):
-    __metaclass__ = _MetaEnum
-
-    def __hash__(self):
-        return hash(self.value)
-
-    def __eq__(self, other):
-        if isinstance(other, ctypes.c_int32):
-            return self.value == other.value
-        return self.value == other
-
-    def __coerce__(self, other):
-        return (self.value, other)
-
-    def __int__(self):
-        return self.value
-
-    def __long__(self):
-        return long(self.value)
-
-    def __float__(self):
-        return float(self.value)
-
-    def __repr__(self):
-        i_self = int(self)
-        for k, v in type(self).__dict__.iteritems():
-            if v == i_self:
-                return '%s(%d)' % (k, i_self)
-        return '?<%s>(%d)' % (type(self).__name__, i_self)
-
-    __str__ = __repr__
 
 #
 

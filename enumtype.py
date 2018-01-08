@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 class _Enumerator(object):
+
     def __init__(self, v=0):
         self.v = v
 
