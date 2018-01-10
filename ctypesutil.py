@@ -98,43 +98,42 @@ def _make_dump():
 
     bufferedprint = BufferedPrint()
 
+    def _isallzero(cdata, csize=0):
+        if isinstance(cdata, int):
+            return (cdata == 0)
+        elif isinstance(cdata, float):
+            return (cdata == 0.0)
+        elif isinstance(cdata, basestring):
+            return (len(cdata) == 0)
+        if csize == 0:
+            csize = c_sizeof(cdata)
+        return (c_string_at(c_addressof(cdata), csize).count('\x00') == csize)
+
+    def _dump(ind, name, obj, printer):
+        if name[:2] == '__':
+            return
+        if hasattr(obj, '_fields_'):
+            printer('%*s%s {', ind, ' ', name)
+            for m in obj._fields_:
+                _dump(ind+2, m[0], getattr(obj, m[0]), printer)
+            printer('%*s}', ind, ' ')
+        elif isinstance(obj, str):
+            printer('%*s%s: <%s>', ind, ' ', name, obj.encode('string_escape'))
+        elif hasattr(obj, '__len__'):
+            last = len(obj)-1
+            for i in xrange(len(obj)):
+                if i == 0 or i == last or not _isallzero(obj[i]):
+                    idxm = '%s[%3d]' % (name, i)
+                    _dump(ind, idxm, obj[i], printer)
+        else:
+            printer('%*s%s: %s', ind, ' ', name, str(obj))
+
+    def _print(fmt, *args):
+        print fmt % args
+
     def dump(self, printer=None, all=False):
-        def _isallzero(cdata, csize=0):
-            if isinstance(cdata, int):
-                return (cdata == 0)
-            elif isinstance(cdata, float):
-                return (cdata == 0.0)
-            elif isinstance(cdata, basestring):
-                return (len(cdata) == 0)
-            if csize == 0:
-                csize = c_sizeof(cdata)
-            return (c_string_at(c_addressof(cdata), csize).count('\x00') == csize)
-
-        def _dump(ind, name, obj, printer):
-            if name[:2] == '__':
-                return
-            if hasattr(obj, '_fields_'):
-                printer('%*s%s {', ind, ' ', name)
-                for m in obj._fields_:
-                    _dump(ind+2, m[0], getattr(obj, m[0]), printer)
-                printer('%*s}', ind, ' ')
-            elif isinstance(obj, str):
-                printer('%*s%s: <%s>', ind, ' ', name, obj.encode('string_escape'))
-            elif hasattr(obj, '__len__'):
-                last = len(obj)-1
-                for i in xrange(len(obj)):
-                    if i == 0 or i == last or not _isallzero(obj[i]):
-                        idxm = '%s[%3d]' % (name, i)
-                        _dump(ind, idxm, obj[i], printer)
-            else:
-                printer('%*s%s: %s', ind, ' ', name, str(obj))
-
-        def _print(fmt, *args):
-            print fmt % args
-
         if not printer:
             printer = _print
-
         bufferedprint.printer = printer
         bufferedprint.limit_calls = 10000
         with bufferedprint:
