@@ -306,7 +306,10 @@ def _setup(cls):
             if is_array(fld[1]):
                 array(fld[1])
             if issubclass(fld[1], Enum):
-                setattr(cls, fld[0], EnumDesc(cls.__dict__[fld[0]]))
+                try:
+                    setattr(cls, fld[0], EnumDesc(cls.__dict__[fld[0]]))
+                except KeyError:
+                    pass
 
     cls.__setattr__ = _wrap_setattr(cls.__setattr__)
     cls._property_ = _PropertyCacheDesc('_property_')
