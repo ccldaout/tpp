@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import cPickle
+import json
 import os
 import select
 import socket
@@ -188,7 +189,7 @@ class PackerBase(object):
         raise NotImplementedError('unpack')
 
 class PyPacker(PackerBase):
-    MAX_PICKLED = (1024*1024*16)
+    MAX_PACKED = (1024*1024*16)
 
     def pack(self, msg):
         s = cPickle.dumps(msg, cPickle.HIGHEST_PROTOCOL)
@@ -202,12 +203,34 @@ class PyPacker(PackerBase):
         if n != 0:
             raise EOFError('Unexpeceted disconnection (error)')
         n, = struct.unpack('<i', s)
-        if not (0 < n <= self.MAX_PICKLED):
-            raise RuntimeError('Pickled object size is too large: %d' % n)
+        if not (0 < n <= self.MAX_PACKED):
+            raise RuntimeError('Packed object size is too large: %d' % n)
         s, n = csock.recv_x(n)
         if n != 0:
             raise EOFError('Unexpected disconnection (error)')
         return cPickle.loads(s)
+
+class JSONPacker(PackerBase):
+    MAX_PACKED = (1024*1024*16)
+
+    def pack(self, msg):
+        s = json.dumps(msg)
+        n = len(s)
+        return struct.pack('<i', n)+s, n+4
+        
+    def unpack(self, csock):
+        s, n = csock.recv_x(4)
+        if not s:
+            raise NoMoreData('Peer maybe finish sending data')
+        if n != 0:
+            raise EOFError('Unexpeceted disconnection (error)')
+        n, = struct.unpack('<i', s)
+        if not (0 < n <= self.MAX_PACKED):
+            raise RuntimeError('Packed object size is too large: %d' % n)
+        s, n = csock.recv_x(n)
+        if n != 0:
+            raise EOFError('Unexpected disconnection (error)')
+        return json.loads(s)
 
 class ServiceBase(object):
     def __new__(cls, *args, **kwargs):
@@ -337,6 +360,13 @@ class IPCPort(object):
     def send(self, msg):
         self._send_queue.put(msg)
 
+    def __getattr__(self, name):
+        def _send(*args):
+            msg = [name]
+            msg.extend(args)
+            return self._send_queue.put(msg)
+        return _send
+
     def send_fin(self, soon=False):
         ___(self._send_queue.stop)(soon)
 
@@ -441,6 +471,13 @@ class SimpleClient(object):
         s, n = self._packer.pack(msg)
         self._csock.send_x(s, n)
         
+    def __getattr__(self, name):
+        def _send(*args):
+            msg = [name]
+            msg.extend(args)
+            return self.send(msg)
+        return _send
+
     def send_fin(self):
         self._csock.shut_write()
         
