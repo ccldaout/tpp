@@ -9,6 +9,8 @@ from tpp.dynamicopt import option as _opt
 with _opt as _def:
     _def('TPP_LAZYIMPORT', 'i', '[tpp.lazyimport] print lazyimport action', 0)
 
+_NO_LAZYIMPORT = bool(os.getenv('TPP_NO_LAZYIMPORT'))
+
 class module(types.ModuleType):
     pass
 
@@ -35,7 +37,10 @@ class LazyModule(module):
             del sys.modules[name]
         if _opt.TPP_LAZYIMPORT:
             print ('[ lazyimport ] import %s (access to %s)' % (name, attr))
-        m = __import__(name, globals(), locals(), [name.split('.')[-1]])
+        # In order to get module object referrenced by 'name' parameter,
+        # we must pass non-emply list as 4-th argument. If not, __import__ return
+        # top module object in name.
+        m = __import__(name, globals(), locals(), ['__name__'])
         self.__dict__.update(m.__dict__)
         try:
             v = getattr(self, attr)
@@ -105,6 +110,8 @@ class LazyFinder(object):
                     return True
             return False
         def do_lazy():
+            if _NO_LAZYIMPORT:
+                return False
             if modname in self._excepts:
                 return False
             if modname in self._mods:
