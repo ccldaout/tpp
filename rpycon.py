@@ -10,6 +10,17 @@ from tpp import threadutil as tu
 #                             server side code
 #----------------------------------------------------------------------------
 
+class _Writer(object):
+    def __init__(self, *writers):
+        self._writers = writers
+
+    def write(self, data):
+        for w in self._writers:
+            try:
+                w(data)
+            except:
+                pass
+
 class _Console(code.InteractiveConsole):
     def __init__(self, ldic=None):
         # [CAUTION] code.InterativeConsole is OLD-TYPE class.
@@ -18,13 +29,14 @@ class _Console(code.InteractiveConsole):
         self._cur_cid = None
         self._receiver = None
         self._stdout = sys.stdout
-        sys.stdout = self
+        self._stderr = sys.stderr
+        sys.stdout = _Writer(self._stdout.write, self._forward)
+        sys.stderr = _Writer(self._stderr.write, self._forward)
 
     def raw_input(prompt=':'):
         raise NotImplementedError('raw_input')
 
-    def write(self, data):
-        self._stdout.write(data)
+    def _forward(self, data):
         with self._lock:
             receiver = self._receiver
         if receiver:
