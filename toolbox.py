@@ -251,7 +251,8 @@ class OnetimeMsgBox(object):
     def post(self, key, value, strict=False):
         with self._cond:
             if key in self._mbox:
-                self._mbox[key] = value
+                # '(value,)' is to prevent wait method from blocking.
+                self._mbox[key] = (value,)
                 self._cond.notify_all()
             elif strict:
                 raise KeyError("Specified key '%s' is not reserved." % key)
@@ -261,13 +262,14 @@ class OnetimeMsgBox(object):
             tmo_s = (3600*24*365*10)
         lim_tv = time.time() + tmo_s
         with self._cond:
+            # self._mbox[key] is not None if post is called.
             while self._mbox[key] is None:
                 self._cond.wait(tmo_s)
                 now_tv = time.time()
                 if now_tv >= lim_tv:
                     return None		# timeout
                 tmo_s = lim_tv - now_tv
-            return self._mbox.pop(key)
+            return self._mbox.pop(key)[0]
 
 #----------------------------------------------------------------------------
 #----------------------------------------------------------------------------
